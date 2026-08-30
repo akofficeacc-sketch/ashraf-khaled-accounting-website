@@ -1,0 +1,377 @@
+﻿@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: Inter, "Noto Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Legacy roles kept as names, re-tuned to the Swiss Bank palette */
+  --color-deep: var(--deep);
+  --color-deep-2: var(--deep-2);
+  --color-deep-3: var(--deep-3);
+  --color-cream: var(--cream);
+  --color-gold: var(--gold);
+  --color-gold-2: var(--gold-2);
+  --color-emerald-glow: var(--emerald-glow);
+
+  /* Squared-off Swiss corner system */
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 10px);
+}
+
+:root {
+  --radius: 4px;
+
+  /* Light — cool paper canvas, white panels, ink type, cobalt accent */
+  --background: #f4f4f5;
+  --foreground: #16181c;
+  --card: #ffffff;
+  --card-foreground: #16181c;
+  --popover: #ffffff;
+  --popover-foreground: #16181c;
+
+  --primary: #c8930e;
+  --primary-foreground: #241600;
+  --secondary: #eceff2;
+  --secondary-foreground: #2c3038;
+  --muted: #ededee;
+  --muted-foreground: #5d6570;
+
+  --accent: #fdf0d4;
+  --accent-foreground: #8a5f00;
+  --destructive: #da1e28;
+  --border: #e2e4e8;
+  --input: #e2e4e8;
+  --ring: #c8930e;
+
+  /* Ink bands */
+  --deep: #0b4a38;
+  --deep-2: #105a45;
+  --deep-3: #1a6a52;
+  --cream: #f7f8fa;
+
+  /* Old gold highlights speak the gold accent */
+  --gold: #d3a41c;
+  --gold-2: #a16207;
+  /* Darker brass contrast keeps the metal readable on the white paper canvas. */
+  --gold-shine: linear-gradient(112deg, #6b4300 0%, #9a6508 18%, #d9aa32 38%, #f0c85c 47%, #a86f06 62%, #d3a13a 80%, #704700 100%);
+  --emerald-glow: #c8930e;
+}
+
+.dark {
+  /* Dark — graphite studio with steel-blue accent */
+  --background: #101215;
+  --foreground: #f2f4f8;
+  --card: #181b20;
+  --card-foreground: #f2f4f8;
+  --popover: #181b20;
+  --popover-foreground: #f2f4f8;
+
+  --primary: #e0b23f;
+  --primary-foreground: #241803;
+  --secondary: #1e2228;
+  --secondary-foreground: #eef1f5;
+  --muted: #191c21;
+  --muted-foreground: #9aa3ae;
+
+  --accent: #211707;
+  --accent-foreground: #f3d283;
+  --destructive: #fa4d56;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #e0b23f;
+
+  --deep: #0a2417;
+  --deep-2: #0f3023;
+  --deep-3: #14402e;
+  --cream: #f2f4f8;
+
+  --gold: #e0b23f;
+  --gold-2: #f3d283;
+  --gold-shine: linear-gradient(112deg, #9b6505 0%, #d8a52c 20%, #fff1a0 42%, #c98912 58%, #f7d875 78%, #956004 100%);
+  --emerald-glow: #e0b23f;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    overflow-x: clip;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    overflow-x: clip;
+  }
+  section[id] {
+    scroll-margin-top: 100px;
+  }
+  ::selection {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #4a9b78;
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2f805f;
+    background-clip: content-box;
+  }
+}
+
+.hero-shell {
+  background:
+    radial-gradient(circle at 8% 18%, rgba(16, 90, 69, 0.08), transparent 30%),
+    linear-gradient(180deg, #f4f8f6 0%, var(--background) 68%, #eef6f1 100%);
+}
+
+.dark .hero-shell {
+  background:
+    radial-gradient(circle at 72% 18%, rgba(40, 130, 94, 0.32), transparent 34%),
+    linear-gradient(135deg, #0d4f3d 0%, #0b4435 48%, #092f25 100%);
+}
+
+@layer utilities {
+  /* Legacy glass hooks become crisp panels - no blur anywhere */
+  .glass-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+
+  .glass-dark {
+    background: var(--deep-2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Legacy gradient-text hooks collapse to solid type */
+  .text-gradient-emerald,
+  .text-gradient-primary {
+    color: var(--primary);
+    -webkit-text-fill-color: var(--primary);
+    background: none;
+  }
+
+  .text-gradient-gold {
+    background-image: var(--gold-shine);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Brushed-metal gold treatment for the most important numerals and accents. */
+  .text-gold-metallic {
+    background-image: var(--gold-shine);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .bg-gold-metallic {
+    background-image: var(--gold-shine);
+  }
+
+  /* Staggered rise-in for the "why" card growth chart */
+  @keyframes bar-rise {
+    from {
+      transform: scaleY(0);
+      opacity: 0;
+    }
+    to {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+  }
+
+  .bar-rise {
+    transform-origin: bottom;
+    animation: bar-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Orbiting rings and staggered stat reveals keep the replacement panel alive without changing the chart. */
+  @keyframes why-ring-pulse {
+    0%,
+    100% {
+      opacity: 0.2;
+      transform: translate(-50%, -50%) scale(0.96);
+    }
+    50% {
+      opacity: 0.65;
+      transform: translate(-50%, -50%) scale(1.04);
+    }
+  }
+
+  @keyframes why-stat-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes why-stat-glow {
+    0%,
+    100% {
+      filter: drop-shadow(0 0 0 rgba(224, 178, 63, 0));
+    }
+    50% {
+      filter: drop-shadow(0 0 8px rgba(224, 178, 63, 0.28));
+    }
+  }
+
+  .why-card-ring {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border: 1px solid rgba(224, 178, 63, 0.22);
+    border-radius: 9999px;
+    pointer-events: none;
+    animation: why-ring-pulse 4.8s ease-in-out infinite;
+  }
+
+  .why-card-ring-outer {
+    width: 17rem;
+    height: 17rem;
+    animation-delay: -1.5s;
+  }
+
+  .why-card-ring-middle {
+    width: 13rem;
+    height: 13rem;
+    border-color: rgba(224, 178, 63, 0.3);
+    animation-delay: -0.8s;
+  }
+
+  .why-card-ring-inner {
+    width: 9.5rem;
+    height: 9.5rem;
+    border-style: dashed;
+    border-color: rgba(224, 178, 63, 0.48);
+    animation-delay: 0s;
+  }
+
+  .why-card-stat {
+    border-inline-start: 1px solid rgba(224, 178, 63, 0.16);
+    opacity: 0;
+    animation: why-stat-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) var(--stat-delay, 0s) both;
+  }
+
+  .why-card-stat-value {
+    animation: why-stat-glow 3.8s ease-in-out calc(var(--stat-delay, 0s) + 0.9s) infinite;
+  }
+
+  /* A deeper brass pass keeps gold CTAs legible against the graphite theme. */
+  .dark .bg-gold-metallic {
+    background-image: linear-gradient(112deg, #8a5a08 0%, #b77c16 20%, #e5bd57 40%, #b4790e 57%, #d6ad45 78%, #7d5107 100%);
+  }
+
+  .cta-gold-glow {
+    box-shadow: 0 9px 26px -11px rgba(164, 111, 6, 0.68);
+  }
+
+  .dark .cta-gold-glow {
+    box-shadow: 0 0 28px -7px rgba(224, 178, 63, 0.78), 0 12px 28px -15px rgba(224, 178, 63, 0.72);
+  }
+
+  /* Cool silver ink gives the gold CTA labels a crisp, engraved contrast. */
+  .text-on-gold {
+    color: #e6ebef;
+    text-shadow: 0 1px 1px rgba(35, 27, 8, 0.45);
+  }
+
+  /* Give the Arabic hero words a little breathing room without separating joined letters. */
+  .hero-arabic-title {
+    word-spacing: 0.06em;
+    letter-spacing: normal;
+  }
+
+  .dark .text-on-gold {
+    color: #d8e0e7;
+    text-shadow: 0 1px 2px rgba(31, 22, 6, 0.72);
+  }
+
+  /* Warmer antique-gold text for the dense ETA/news panel. */
+  .text-gold-warm {
+    color: #a9700d;
+  }
+
+  .dark .text-gold-warm {
+    color: #d1a044;
+  }
+
+  /* Legacy glow hooks become flat */
+  .glow-emerald,
+  .glow-gold,
+  .glow-card {
+    box-shadow: none;
+  }
+
+  .rule-gold {
+    height: 1px;
+    width: 100%;
+    background: color-mix(in oklab, var(--gold) 60%, transparent);
+  }
+
+  .pulse-dot {
+    animation: none;
+  }
+
+  .animate-floaty,
+  .animate-floaty-2 {
+    animation: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ashraf-khaled-accounting",
+  "name": "ashraf-khaled-accounting-website",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-09-04",
   "compatibility_flags": [
@@ -14,21 +14,15 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "ashraf-khaled-accounting"
+      "service": "ashraf-khaled-accounting-website"
     }
   ],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ashraf-khaled-contact",
-      "database_id": "<REPLACE_AFTER_D1_CREATE>",
-      "migrations_dir": "db/migrations"
-    },
-    {
-      "binding": "ashraf_khaled_accounting_db",
       "database_name": "ashraf-khaled-accounting-db",
       "database_id": "ce4e001b-22c0-4940-8448-65fe95166afe",
-      "remote": true
+      "migrations_dir": "db/migrations"
     }
   ],
   "ratelimits": [

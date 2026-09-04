@@ -8,8 +8,9 @@
 
 The project now uses OpenNext on Cloudflare Workers, D1 for contact storage, and
 Resend for notifications. `npm run build` creates the `.open-next` bundle, so a
-subsequent `npx wrangler deploy` can deploy it. The remaining account-specific
-steps are replacing the placeholder D1 UUID and setting Worker secrets.
+subsequent `npx wrangler deploy` can deploy it. The D1 database is now configured
+with its real UUID and the migration has been applied; Worker secrets remain an
+account-level setup step.
 
 ---
 
@@ -87,8 +88,8 @@ cloudflare-env.d.ts
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ashraf-khaled-contact",
-      "database_id": "<REPLACE_AFTER_STEP_4>",
+      "database_name": "ashraf-khaled-accounting-db",
+      "database_id": "ce4e001b-22c0-4940-8448-65fe95166afe",
       "migrations_dir": "db/migrations"
     }
   ],

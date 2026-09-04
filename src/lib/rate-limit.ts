@@ -142,12 +142,18 @@ export function rateLimit(options: RateLimitOptions): RateLimitResult {
 }
 
 /**
- * Best-effort client identifier: first hop of `x-forwarded-for`, then
- * `x-real-ip`, falling back to "unknown".
+ * Prefer Cloudflare's origin IP header, then fall back to proxy headers for
+ * local development and non-Cloudflare deployments.
  */
 export function getClientKey(request: Request): string {
   try {
     if (!request || !request.headers) return "unknown";
+    const cloudflareIp = request.headers.get("cf-connecting-ip");
+    if (cloudflareIp) {
+      const trimmed = cloudflareIp.trim();
+      if (trimmed) return sanitizeKey(trimmed);
+    }
+
     const forwardedFor = request.headers.get("x-forwarded-for");
     if (forwardedFor) {
       const first = forwardedFor.split(",")[0]?.trim();

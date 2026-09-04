@@ -28,7 +28,7 @@ export const CONTACT = {
     tel: "+201003879710",
     whatsapp: "https://wa.me/201003879710",
   },
-  email: "office2024main@gmail.com",
+  email: "Ak.officeacc@gmail.com",
   addressAr: "الإسكندرية - 5 شارع فيكتور عمانويل",
   addressAr2: "مصطفى كامل - برج (جـ) شقة 403",
   addressShortAr: "مصطفى كامل، الإسكندرية",

@@ -16,6 +16,8 @@ node_modules
 # next.js
 /.next/
 /out/
+/.open-next/
+/.wrangler/
 
 # production
 /build
@@ -32,10 +34,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.dev.vars
 
 # vercel
 .vercel
-
 
 # typescript
 *.tsbuildinfo
@@ -50,8 +52,17 @@ test
 prompt
 
 server.log
+preview.log
+preview.err.log
+
+# local databases
+*.db
 
 # archive zips
 *.zip
+
 # Skills directory
 /skills/
+
+# Wrangler-generated binding types
+cloudflare-env.generated.d.ts

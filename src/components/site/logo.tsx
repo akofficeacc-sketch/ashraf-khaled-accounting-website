@@ -18,7 +18,7 @@ export function LogoMark({ className }: { className?: string }) {
       )}
     >
       <img
-        src="/office-logo-latest.png"
+        src="/office-logo-user.png"
         alt="AK Logo"
         width={48}
         height={48}

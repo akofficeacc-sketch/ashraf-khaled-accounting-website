@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { insertContactMessage } from "@/lib/db";
 import { getClientKey, rateLimit } from "@/lib/rate-limit";
 import { normalizeEgyptianPhone } from "@/lib/phone";
 import { sendContactNotification } from "@/lib/mail";
@@ -18,10 +19,63 @@ const MAX_BODY_CHARS = 10_000;
 /** Hard byte cap while streaming the body: 10,000 chars * 4 bytes UTF-8 max. */
 const MAX_BODY_BYTES = MAX_BODY_CHARS * 4;
 
+/** Reject clickable or commonly obfuscated URLs in user-entered text. */
+const LINK_PATTERN = /(?:https?|ftp|hxxps?):\/\/|(?:javascript|data):|\bwww\s*\.\s*|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\s*\.\s*)+[a-z]{2,}(?:\s*[/?#:]|\b)|\b(?:\d{1,3}\s*\.){3}\d{1,3}(?:\s*[:/]|\b)/i;
+
+function containsLink(value: string): boolean {
+  return LINK_PATTERN.test(value.replace(/\[\s*\.\s*\]/g, "."));
+}
+
+/** Reject a deceptive domain-like local part while allowing normal email addresses. */
+function containsSuspiciousEmail(value: string): boolean {
+  const localPart = value.slice(0, value.lastIndexOf("@")).trim();
+  return /^(?:www\s*\.|https?|hxxps?):/i.test(localPart) || containsLink(localPart);
+}
+
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
   "Pragma": "no-cache",
 } as const;
+
+type CloudflareRateLimiter = {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+};
+
+type CloudflareRequest = Request & {
+  cf?: {
+    city?: string;
+    country?: string;
+    region?: string;
+  };
+};
+
+async function enforceRateLimit(key: string) {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    const cloudflareLimiter = (env as { CONTACT_RL?: CloudflareRateLimiter }).CONTACT_RL;
+    if (cloudflareLimiter) {
+      const result = await cloudflareLimiter.limit({ key });
+      return {
+        success: result.success,
+        remaining: result.success ? RATE_LIMIT_MAX - 1 : 0,
+        retryAfterSec: result.success ? 0 : Math.ceil(RATE_LIMIT_WINDOW_MS / 1000),
+      };
+    }
+  } catch (error) {
+    logger.warn({
+      module: "contact-api",
+      action: "rateLimit",
+      message: "Cloudflare rate-limit binding unavailable; using local fallback",
+      error,
+    });
+  }
+
+  return rateLimit({
+    key,
+    limit: RATE_LIMIT_MAX,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+}
 
 function jsonResponse(
   data: unknown,
@@ -41,6 +95,7 @@ const contactSchema = z.object({
     .min(2, "name must be at least 2 characters")
     .max(120, "name must be at most 120 characters")
     .regex(/^[^\<\>\"\'\;\=\(\)]+$/, "name contains prohibited characters")
+    .refine((v) => !containsLink(v), "links are not allowed in the name")
     // Control characters (incl. CRLF) must never reach the DB or the mail template.
     .refine((v) => !/[\u0000-\u001F\u007F]/.test(v), "name contains control characters"),
   phone: z
@@ -50,13 +105,21 @@ const contactSchema = z.object({
     .max(25, "phone must be at most 25 characters")
     .regex(/^[+\d\s()-]+$/, "phone contains invalid characters"),
   email: z
-    .union([z.literal(""), z.string().email("invalid email address").max(150)])
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .email("invalid email address")
+        .max(150)
+        .refine((v) => !containsSuspiciousEmail(v), "links are not allowed in the email"),
+    ])
     .optional()
     .transform((v) => (v === "" || v === undefined ? null : v)),
   service: z
     .string()
     .trim()
     .max(120, "service must be at most 120 characters")
+    .refine((v) => v.length === 0 || !containsLink(v), "links are not allowed in the service")
     .refine((v) => v.length === 0 || !/[\u0000-\u001F\u007F]/.test(v), "service contains control characters")
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null)),
@@ -65,6 +128,7 @@ const contactSchema = z.object({
     .trim()
     .min(5, "message must be at least 5 characters")
     .max(2000, "message must be at most 2000 characters")
+    .refine((v) => !containsLink(v), "links are not allowed in the message")
     // Allow internal newlines in the message body, but reject all other control chars.
     .refine((v) => !/[\u0000-\u0009\u000B-\u001F\u007F]/.test(v), "message contains control characters"),
   lang: z.enum(["ar", "en"]).default("ar"),
@@ -137,11 +201,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // 1. Sliding-window rate limit per client key
   const clientKey = getClientKey(request);
-  const limit = rateLimit({
-    key: `contact:${clientKey}`,
-    limit: RATE_LIMIT_MAX,
-    windowMs: RATE_LIMIT_WINDOW_MS,
-  });
+  const limit = await enforceRateLimit(`contact:${clientKey}`);
 
   if (!limit.success) {
     logger.warn({
@@ -212,10 +272,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     const firstIssue = parsed.error.issues[0];
     const fieldPath = firstIssue?.path.join(".") || "input";
     const errorMessage = firstIssue ? `${fieldPath}: ${firstIssue.message}` : "Validation failed";
+    const isLinkError = firstIssue?.message.startsWith("links are not allowed") ?? false;
+    const errorCode = isLinkError
+      ? firstIssue?.path[0] === "message"
+        ? "MESSAGE_LINK_NOT_ALLOWED"
+        : "LINK_NOT_ALLOWED"
+      : "VALIDATION_FAILED";
     return jsonResponse(
       {
         ok: false,
-        error: { code: "VALIDATION_FAILED", message: errorMessage },
+        error: { code: errorCode, message: errorMessage },
       },
       400,
     );
@@ -240,15 +306,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // 8. Persist to database
   try {
-    const saved = await db.contactMessage.create({
-      data: {
-        name: data.name,
-        phone: normalizedPhone.e164, // Always standardized +201XXXXXXXXX
-        email: data.email,
-        service: data.service,
-        message: data.message,
-        lang: data.lang,
-      },
+    const saved = await insertContactMessage({
+      name: data.name,
+      phone: normalizedPhone.e164, // Always standardized +201XXXXXXXXX
+      email: data.email,
+      service: data.service,
+      message: data.message,
+      lang: data.lang,
     });
 
     logger.info({
@@ -258,23 +322,46 @@ export async function POST(request: Request): Promise<NextResponse> {
       metadata: { id: saved.id, lang: data.lang, carrier: normalizedPhone.carrier },
     });
 
-    // 9. Send email notification asynchronously without blocking API response
-    void sendContactNotification({
-      id: saved.id,
-      name: data.name,
-      phoneDisplay: normalizedPhone.display,
-      email: data.email,
-      service: data.service,
-      message: data.message,
-      lang: data.lang,
-    }).catch((err) => {
-      logger.error({
-        module: "contact-api",
-        action: "sendNotification",
-        message: "Async mail notification failed after DB save",
-        error: err,
-      });
-    });
+    // 9. Keep the Worker alive for the email request without delaying the UI.
+    const { ctx } = await getCloudflareContext({ async: true });
+    const cloudflareRequest = request as CloudflareRequest;
+    const forwardedIp = request.headers.get("x-forwarded-for")
+      ?.split(",")[0]
+      ?.trim();
+    const ipAddress = request.headers.get("cf-connecting-ip")?.trim()
+      || request.headers.get("x-real-ip")?.trim()
+      || forwardedIp
+      || "Local preview";
+    const countryCode = request.headers.get("cf-ipcountry")?.trim().toUpperCase()
+      || cloudflareRequest.cf?.country?.trim().toUpperCase();
+    const city = cloudflareRequest.cf?.city?.trim();
+    const region = cloudflareRequest.cf?.region?.trim();
+    const country = countryCode === "EG"
+      ? "Egypt"
+      : city && countryCode
+        ? `${city}, ${region ? `${region}, ` : ""}${countryCode}`
+        : countryCode || "Local preview";
+    ctx.waitUntil(
+      sendContactNotification({
+        id: saved.id,
+        name: data.name,
+        phoneDisplay: normalizedPhone.display,
+        email: data.email,
+        service: data.service,
+        message: data.message,
+        lang: data.lang,
+        ipAddress,
+        country,
+        submittedAt: new Date().toISOString(),
+      }).catch((err) =>
+        logger.error({
+          module: "contact-api",
+          action: "sendNotification",
+          message: "Mail failed after D1 save",
+          error: err,
+        }),
+      ),
+    );
 
     return jsonResponse({ ok: true, data: { id: saved.id } }, 200);
   } catch (error) {

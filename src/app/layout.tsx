@@ -64,7 +64,7 @@ const jsonLd = {
     addressCountry: "EG",
   },
   telephone: ["+201224517437", "+201003879710"],
-  email: "office2024main@gmail.com",
+  email: "Ak.officeacc@gmail.com",
   areaServed: "EG",
   priceRange: "$$",
 };

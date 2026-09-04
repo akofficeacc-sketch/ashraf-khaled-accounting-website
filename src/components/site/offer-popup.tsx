@@ -4,6 +4,10 @@ import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, BadgePercent, Clock3, MessageCircle, X } from "lucide-react";
 import { CONTACT, content } from "@/lib/site-content";
+import {
+  CONTACT_SUBMITTED_EVENT,
+  hasRecentContactSubmission,
+} from "@/lib/contact-cookie";
 import { useLang } from "./lang-provider";
 
 /**
@@ -29,6 +33,7 @@ export function OfferPopup() {
   const t = content[lang].offerPopup;
 
   const [visible, setVisible] = React.useState(false);
+  const [submissionCooldown, setSubmissionCooldown] = React.useState(() => hasRecentContactSubmission());
   const timerRef = React.useRef<number | null>(null);
   const contactInViewRef = React.useRef(false);
   const scheduleRef = React.useRef<(delay: number) => void>(() => undefined);
@@ -60,9 +65,21 @@ export function OfferPopup() {
 
   // Initial appearance + cleanup.
   React.useEffect(() => {
+    if (hasRecentContactSubmission()) return;
     scheduleShow(FIRST_SHOW_DELAY_MS);
     return clearTimer;
   }, [scheduleShow]);
+
+  // A successful contact submission suppresses this offer for two days.
+  React.useEffect(() => {
+    const onContactSubmitted = () => {
+      clearTimer();
+      setVisible(false);
+      setSubmissionCooldown(true);
+    };
+    window.addEventListener(CONTACT_SUBMITTED_EVENT, onContactSubmitted);
+    return () => window.removeEventListener(CONTACT_SUBMITTED_EVENT, onContactSubmitted);
+  }, []);
 
   // Track whether the contact section is in view (popup would be redundant).
   React.useEffect(() => {
@@ -100,7 +117,7 @@ export function OfferPopup() {
 
   return (
     <AnimatePresence>
-      {visible && (
+      {visible && !submissionCooldown && (
         <motion.aside
           key="offer-popup"
           role="dialog"

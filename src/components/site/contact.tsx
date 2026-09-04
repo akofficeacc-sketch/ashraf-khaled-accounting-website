@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { rememberContactSubmission } from "@/lib/contact-cookie";
 
 /* -------------------------------- CTA banner -------------------------------- */
 
@@ -177,7 +178,9 @@ export function ContactSection() {
           lang,
         }),
       });
-      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: { code?: string; message?: string } }
+        | null;
       if (!res.ok || !data?.ok) {
         if (res.status === 429) {
           throw new Error(
@@ -186,11 +189,18 @@ export function ContactSection() {
               : "Too many requests. Please wait a minute and try again."
           );
         }
-        if (data?.error?.startsWith("phone:")) {
+        if (data?.error?.code === "INVALID_PHONE" || data?.error?.message?.startsWith("phone:")) {
           throw new Error(
             lang === "ar"
               ? "أدخل رقم موبايل مصري صحيح، مثال: +20 100 123 4567."
               : "Enter a valid Egyptian mobile number, e.g. +20 100 123 4567."
+          );
+        }
+        if (data?.error?.code === "MESSAGE_LINK_NOT_ALLOWED" || data?.error?.code === "LINK_NOT_ALLOWED") {
+          throw new Error(
+            lang === "ar"
+              ? "لا يمكن إرسال روابط في بيانات التواصل. احذف الرابط وحاول مرة أخرى."
+              : "Links are not allowed in the contact details. Please remove the link and try again."
           );
         }
         if (res.status === 400) {
@@ -206,6 +216,7 @@ export function ContactSection() {
             : "We could not save your request right now. Please call us instead."
         );
       }
+      rememberContactSubmission();
       setDone(true);
       toast.success(t.contact.form.successTitle);
     } catch (error) {

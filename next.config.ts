@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 /**
  * Production-grade security headers adhering to strict cybersecurity standards.
@@ -46,7 +47,6 @@ const prodCsp = [
 const isDev = process.env.NODE_ENV !== "production";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -74,5 +74,7 @@ const nextConfig: NextConfig = {
     ];
   },
 };
+
+initOpenNextCloudflareForDev();
 
 export default nextConfig;

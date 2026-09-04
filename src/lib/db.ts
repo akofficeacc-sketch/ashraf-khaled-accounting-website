@@ -1,32 +1,40 @@
-import path from 'path'
-import { PrismaClient } from '@prisma/client'
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
+export type NewContactMessage = {
+  name: string;
+  phone: string;
+  email: string | null;
+  service: string | null;
+  message: string;
+  lang: "ar" | "en";
+};
+
+type D1PreparedStatement = {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<unknown>;
+};
+
+type D1DatabaseLike = {
+  prepare(query: string): D1PreparedStatement;
+};
 
 /**
- * Prisma resolves `file:` SQLite URLs relative to prisma/schema.prisma, but the
- * generated client can apply that relative path against an unexpected working
- * directory (Windows error 14: "Unable to open the database file"). Resolve the
- * URL to an absolute path up front so dev, scripts, and the standalone server
- * all hit <project-root>/db/custom.db regardless of where the process starts.
+ * Store a contact request in Cloudflare D1 using a parameterised statement.
+ * The binding is resolved per request so this works across Worker isolates.
  */
-function resolveDatabaseUrl(): string | undefined {
-  const url = process.env.DATABASE_URL
-  if (!url || !url.startsWith('file:')) return url
-  const filePath = url.slice('file:'.length)
-  if (path.isAbsolute(filePath)) return url
-  return `file:${path.resolve(process.cwd(), 'prisma', filePath)}`
+export async function insertContactMessage(m: NewContactMessage): Promise<{ id: string }> {
+  const { env } = await getCloudflareContext({ async: true });
+  const db = (env as { DB?: D1DatabaseLike }).DB;
+  if (!db) throw new Error("D1 binding 'DB' is not configured");
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO contact_messages (id, name, phone, email, service, message, lang)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+    )
+    .bind(id, m.name, m.phone, m.email, m.service, m.message, m.lang)
+    .run();
+
+  return { id };
 }
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
-
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    // Never log queries: contact form rows contain PII (name/phone/email)
-    // and must not be written to plaintext log files in any environment.
-    log: ['error', 'warn'],
-    datasources: { db: { url: resolveDatabaseUrl() } },
-  })
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

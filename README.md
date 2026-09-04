@@ -140,3 +140,5 @@ GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
 ---
 
 © 2026 مكتب محاسبة أشرف منسي وخالد الصادق
+#   a s h r a f - k h a l e d - a c c o u n t i n g - w e b s i t e  
+ 

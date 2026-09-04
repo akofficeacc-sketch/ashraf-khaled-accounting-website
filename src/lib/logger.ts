@@ -5,6 +5,7 @@
  */
 
 type LogLevel = "info" | "warn" | "error" | "debug";
+const MAX_ERROR_LOG_CHARS = 2_000;
 
 export type LogPayload = {
   module: string;
@@ -43,15 +44,37 @@ function sanitizeMetadata(meta?: Record<string, unknown>): Record<string, unknow
   return sanitized;
 }
 
+function truncateLogValue(value: string): string {
+  return value.length > MAX_ERROR_LOG_CHARS
+    ? `${value.slice(0, MAX_ERROR_LOG_CHARS)}…`
+    : value;
+}
+
+function serializeError(error: unknown): unknown {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: truncateLogValue(error.message),
+      ...(error.stack ? { stack: truncateLogValue(error.stack) } : {}),
+    };
+  }
+  if (typeof error === "string") return truncateLogValue(error);
+  if (error && typeof error === "object") {
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized.length <= MAX_ERROR_LOG_CHARS) return JSON.parse(serialized);
+      return `${serialized.slice(0, MAX_ERROR_LOG_CHARS)}…`;
+    } catch {
+      return "[Unserializable error]";
+    }
+  }
+  return error === undefined ? undefined : String(error);
+}
+
 function formatLog(level: LogLevel, payload: LogPayload): string {
   const timestamp = new Date().toISOString();
   const meta = sanitizeMetadata(payload.metadata);
-  const errorDetails =
-    payload.error instanceof Error
-      ? { name: payload.error.name, message: payload.error.message, stack: payload.error.stack }
-      : payload.error
-      ? String(payload.error)
-      : undefined;
+  const errorDetails = serializeError(payload.error);
 
   return JSON.stringify({
     timestamp,

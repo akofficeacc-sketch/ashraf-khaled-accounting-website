@@ -4,6 +4,13 @@
 > Follow the steps **in order**. Each step lists the exact files to touch and the
 > acceptance check to run before moving on. Do not skip the acceptance checks.
 
+## Current repository status
+
+The project now uses OpenNext on Cloudflare Workers, D1 for contact storage, and
+Resend for notifications. `npm run build` creates the `.open-next` bundle, so a
+subsequent `npx wrangler deploy` can deploy it. The remaining account-specific
+steps are replacing the placeholder D1 UUID and setting Worker secrets.
+
 ---
 
 ## 0. Context: what this project is
@@ -36,7 +43,7 @@ Root causes (all must be fixed):
 3. **Two dependencies are incompatible with the Workers runtime:**
    - `nodemailer` (raw SMTP sockets on port 465) → replace with **Resend HTTP API**.
    - `@prisma/client` + **SQLite file** (`db/custom.db`) → there is no writable filesystem on Workers. Replace with **Cloudflare D1** (see Step 4).
-4. `output: "standalone"` and the custom `cp -r` in the `build` script are for a Node server; OpenNext needs a plain `next build`.
+4. `output: "standalone"` and the custom `cp -r` in the `build` script are for a Node server; OpenNext needs its own build command so it can create the `.open-next` bundle.
 
 ---
 
@@ -68,7 +75,7 @@ cloudflare-env.d.ts
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ashraf-khaled-accounting",
   "main": ".open-next/worker.js",
-  "compatibility_date": "2025-03-01",
+  "compatibility_date": "2026-09-04",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
     "directory": ".open-next/assets",
@@ -81,7 +88,8 @@ cloudflare-env.d.ts
     {
       "binding": "DB",
       "database_name": "ashraf-khaled-contact",
-      "database_id": "<REPLACE_AFTER_STEP_4>"
+      "database_id": "<REPLACE_AFTER_STEP_4>",
+      "migrations_dir": "db/migrations"
     }
   ],
   "observability": { "enabled": true }
@@ -351,7 +359,8 @@ initOpenNextCloudflareForDev();
 ```json
 {
   "dev": "next dev -p 3000",
-  "build": "next build",
+  "build": "opennextjs-cloudflare build",
+  "next:build": "next build",
   "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
   "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
   "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
@@ -364,9 +373,8 @@ initOpenNextCloudflareForDev();
 - Remove the `start` script (no Node server anymore).
 
 **In the Cloudflare dashboard** (Workers & Pages → project → Settings → Build):
-- **Build command:** `bun run build` (or `npm run build`) — NOT the deploy script.
-- **Deploy command:** `npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy`
-  (replace the failing `npx wrangler deploy`).
+- **Build command:** `bun run build` (or `npm run build`) — this now creates the `.open-next` bundle.
+- **Deploy command:** `npx wrangler deploy` or `npm run deploy` after the build completes.
 
 Add `public/_headers`:
 

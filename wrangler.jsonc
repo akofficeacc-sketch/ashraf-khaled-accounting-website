@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ashraf-khaled-accounting",
   "main": ".open-next/worker.js",
-  "compatibility_date": "2025-03-01",
+  "compatibility_date": "2026-09-04",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
     "directory": ".open-next/assets",
@@ -15,7 +15,8 @@
     {
       "binding": "DB",
       "database_name": "ashraf-khaled-contact",
-      "database_id": "<REPLACE_AFTER_D1_CREATE>"
+      "database_id": "<REPLACE_AFTER_D1_CREATE>",
+      "migrations_dir": "db/migrations"
     }
   ],
   "ratelimits": [

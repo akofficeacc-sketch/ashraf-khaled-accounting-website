@@ -28,8 +28,11 @@ function containsLink(value: string): boolean {
 
 /** Reject a deceptive domain-like local part while allowing normal email addresses. */
 function containsSuspiciousEmail(value: string): boolean {
-  const localPart = value.slice(0, value.lastIndexOf("@")).trim();
-  return /^(?:www\s*\.|https?|hxxps?):/i.test(localPart) || containsLink(localPart);
+  const normalized = value.replace(/\[\s*\.\s*\]/g, ".").trim();
+  const localPart = normalized.slice(0, normalized.lastIndexOf("@")).trim();
+  return /^www\s*\./i.test(localPart)
+    || /^(?:https?|hxxps?):\/\//i.test(localPart)
+    || /\b(?:\d{1,3}\s*\.){3}\d{1,3}\b/.test(localPart);
 }
 
 const NO_STORE_HEADERS = {

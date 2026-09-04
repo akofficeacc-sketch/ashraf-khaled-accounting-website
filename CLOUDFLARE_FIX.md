@@ -6,6 +6,81 @@
 
 ---
 
+## STATUS: review of `main` (most of this guide is already applied)
+
+`main` already contains the OpenNext/Cloudflare migration: `wrangler.jsonc`,
+`open-next.config.ts`, `@opennextjs/cloudflare` + `wrangler` + `resend` in
+`package.json`, D1-backed `src/lib/db.ts`, Resend-backed `src/lib/mail.ts`,
+`ctx.waitUntil()` in the contact route, Cloudflare rate-limit binding with
+in-memory fallback, and the client-side error-shape fix in `contact.tsx`.
+
+Verified locally against `origin/main` (`bun install --frozen-lockfile`,
+`opennextjs-cloudflare build`, `wrangler dev`):
+
+- Build: **passes** (`.open-next/worker.js` produced). `bun run lint`: 0 errors.
+- `GET /api/contact` 200; `POST` valid → 200 + row in D1; cross-site → 403;
+  bad phone → 400 `INVALID_PHONE`; link in message → 400
+  `MESSAGE_LINK_NOT_ALLOWED`; honeypot → fake 200; 6th request → 429.
+- Security headers present on `/`: HSTS, CSP, `X-Frame-Options`, no `X-Powered-By`.
+- Home page hydrates from the worker bundle; no CSP console errors.
+
+### Remaining items to fix on `main` (in priority order)
+
+1. **`wrangler.jsonc` still has `"database_id": "<REPLACE_AFTER_D1_CREATE>"`.**
+   `wrangler deploy` will fail until this is a real UUID. Run
+   `npx wrangler d1 create ashraf-khaled-contact` and paste the returned id.
+
+2. **D1 migrations are in the wrong folder.** Wrangler defaults to `./migrations`,
+   but the file lives at `db/migrations/0001_contact_messages.sql`, so
+   `wrangler d1 migrations apply ashraf-khaled-contact --remote` reports
+   "No migrations present" and the first real submission fails with
+   `D1_ERROR: no such table: contact_messages` (500 `DATABASE_ERROR`).
+   Fix either by adding to the `d1_databases[0]` entry in `wrangler.jsonc`:
+   `"migrations_dir": "db/migrations"` (preferred, keeps the folder), or by
+   moving the file to `migrations/0001_contact_messages.sql`. Then run
+   `npx wrangler d1 migrations apply ashraf-khaled-contact --remote` once.
+
+3. **Cloudflare dashboard deploy command.** It must be
+   `npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy`
+   (or `bun run deploy`). Build command: `bun install` (or leave empty).
+   Plain `npx wrangler deploy` will keep failing with the static-files error
+   because the `.open-next/` folder is never produced.
+
+4. **Secrets must be set on the Worker** (not in `.env`, which is gitignored and
+   not deployed): `npx wrangler secret put RESEND_API_KEY`,
+   `npx wrangler secret put CONTACT_NOTIFY_EMAIL`,
+   `npx wrangler secret put CONTACT_FROM_EMAIL`. Until `CONTACT_FROM_EMAIL` is
+   a verified-domain sender, Resend's `onboarding@resend.dev` only delivers to
+   the Resend account owner's inbox (must equal `CONTACT_NOTIFY_EMAIL`).
+
+5. **Rate-limit binding requires the Workers Paid plan.** On the free plan the
+   `ratelimits` block is accepted but `CONTACT_RL` may be undefined; the code
+   already falls back to the in-memory limiter, which is per-isolate and easy
+   to bypass. Add a WAF rate-limiting rule on `/api/contact` (5 req / 60 s per
+   IP) in the Cloudflare dashboard as the real enforcement layer.
+
+6. **Logger flattens errors to `"[object Object]"`.** In `src/lib/logger.ts`
+   the Resend error object is stringified badly (`"error":"[object Object]"`),
+   so the actual Resend rejection reason (e.g. domain not verified, invalid
+   key) is invisible in Worker logs. Serialize non-`Error` values with
+   `JSON.stringify` (bounded) and `Error` values as `{ name, message }`.
+
+7. **Repository hygiene.** `public/` still ships 9 logo variants (only
+   `office-logo-user.png` and `logo.svg` are referenced); remove the unused
+   ones to shrink the asset upload. `compatibility_date` `2025-03-01` works but
+   wrangler warns; bump to the current date after a local `wrangler dev` check.
+
+8. **Minor:** `.gitignore` has `.env*` which also ignores `.env.example`; add
+   `!.env.example` and commit an example file listing the three secret names.
+   `next lint` warns about the Google Fonts `<link>` in `layout.tsx`; leave it
+   (fonts are intentionally loaded via `<link>` with a system-font fallback) or
+   suppress with `// eslint-disable-next-line @next/next/no-page-custom-font`.
+
+The sections below are the original migration plan and remain useful as
+reference for the parts already implemented.
+
+---
+
 ## 0. Context: what this project is
 
 - **Framework:** Next.js `16.3.3` (App Router), React 19, TypeScript, Tailwind v4, shadcn/ui.

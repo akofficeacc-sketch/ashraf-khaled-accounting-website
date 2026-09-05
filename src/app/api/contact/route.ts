@@ -119,13 +119,12 @@ const contactSchema = z.object({
     .optional()
     .transform((v) => (v === "" || v === undefined ? null : v)),
   service: z
-    .string()
+    .string({ error: "service is required" })
     .trim()
+    .min(1, "service is required")
     .max(120, "service must be at most 120 characters")
-    .refine((v) => v.length === 0 || !containsLink(v), "links are not allowed in the service")
-    .refine((v) => v.length === 0 || !/[\u0000-\u001F\u007F]/.test(v), "service contains control characters")
-    .optional()
-    .transform((v) => (v && v.length > 0 ? v : null)),
+    .refine((v) => !containsLink(v), "links are not allowed in the service")
+    .refine((v) => !/[\u0000-\u001F\u007F]/.test(v), "service contains control characters"),
   message: z
     .string({ error: "message is required" })
     .trim()
@@ -202,6 +201,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     return originBlock;
   }
 
+  // Only accept JSON. This also prevents the endpoint from being used as a
+  // simple cross-site form target (defense-in-depth alongside the origin guard).
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") {
+    return jsonResponse(
+      {
+        ok: false,
+        error: {
+          code: "UNSUPPORTED_MEDIA_TYPE",
+          message: "Please submit the contact form as JSON.",
+        },
+      },
+      415,
+    );
+  }
+
   // 1. Sliding-window rate limit per client key
   const clientKey = getClientKey(request);
   const limit = await enforceRateLimit(`contact:${clientKey}`);
@@ -276,11 +291,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     const fieldPath = firstIssue?.path.join(".") || "input";
     const errorMessage = firstIssue ? `${fieldPath}: ${firstIssue.message}` : "Validation failed";
     const isLinkError = firstIssue?.message.startsWith("links are not allowed") ?? false;
+    const isRequiredError = firstIssue?.message.endsWith("is required") ?? false;
     const errorCode = isLinkError
       ? firstIssue?.path[0] === "message"
         ? "MESSAGE_LINK_NOT_ALLOWED"
         : "LINK_NOT_ALLOWED"
-      : "VALIDATION_FAILED";
+      : isRequiredError
+        ? "REQUIRED_FIELD"
+        : "VALIDATION_FAILED";
     return jsonResponse(
       {
         ok: false,
@@ -388,5 +406,15 @@ export async function POST(request: Request): Promise<NextResponse> {
 }
 
 export async function GET(): Promise<NextResponse> {
-  return jsonResponse({ ok: true, message: "Ashraf & Khaled Accounting Office Contact API v2.0" }, 200);
+  return jsonResponse(
+    {
+      ok: false,
+      error: {
+        code: "METHOD_NOT_ALLOWED",
+        message: "Use POST to submit a contact request.",
+      },
+    },
+    405,
+    { Allow: "POST" },
+  );
 }

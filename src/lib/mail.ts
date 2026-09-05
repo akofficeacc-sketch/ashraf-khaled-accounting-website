@@ -5,6 +5,7 @@
  */
 
 import { Resend } from "resend";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { logger } from "./logger";
 
 export type SubmissionPayload = {
@@ -63,6 +64,22 @@ function receivedAt(value: string | undefined): string {
     hour12: false,
     timeZone: "Africa/Cairo",
   }).format(date);
+}
+
+type MailEnvironment = {
+  RESEND_API_KEY?: string;
+  CONTACT_NOTIFY_EMAIL?: string;
+  CONTACT_FROM_EMAIL?: string;
+};
+
+/** Read production secrets from Worker bindings, with a local Node fallback. */
+async function getMailEnvironment(): Promise<MailEnvironment> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return env as MailEnvironment;
+  } catch {
+    return {};
+  }
 }
 
 function buildEmailHtml(p: SubmissionPayload): string {
@@ -150,14 +167,18 @@ function buildEmailText(p: SubmissionPayload): string {
  * Non-blocking failure: submission is already stored in DB — mail issues never disrupt response.
  */
 export async function sendContactNotification(payload: SubmissionPayload): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const runtimeEnv = await getMailEnvironment();
+  const apiKey = (runtimeEnv.RESEND_API_KEY ?? process.env.RESEND_API_KEY)?.trim();
   // Resend compares the onboarding recipient with the account email; normalize
   // casing so `Ak.officeacc@gmail.com` and `ak.officeacc@gmail.com` match.
-  const to = sanitizeHeader(process.env.CONTACT_NOTIFY_EMAIL?.trim() ?? "").toLowerCase();
+  const to = sanitizeHeader(
+    (runtimeEnv.CONTACT_NOTIFY_EMAIL ?? process.env.CONTACT_NOTIFY_EMAIL)?.trim() ?? "",
+  ).toLowerCase();
   // Use a verified domain sender in production. Resend's onboarding sender is
   // useful for local setup but can only deliver to the account owner's inbox.
   const from = sanitizeHeader(
-    process.env.CONTACT_FROM_EMAIL?.trim() ?? "Office Website <onboarding@resend.dev>",
+    (runtimeEnv.CONTACT_FROM_EMAIL ?? process.env.CONTACT_FROM_EMAIL)?.trim()
+      ?? "Office Website <onboarding@resend.dev>",
   );
 
   if (!apiKey || !to) {
@@ -179,35 +200,47 @@ export async function sendContactNotification(payload: SubmissionPayload): Promi
 
   try {
     const resend = new Resend(apiKey);
-    const { data, error } = await resend.emails.send(
-      {
-        from,
-        to: [to],
-        subject,
-        text: buildEmailText(payload),
-        html: buildEmailHtml(payload),
-        ...(payload.email ? { replyTo: payload.email } : {}),
-      },
-      { idempotencyKey: `contact/${payload.id}` },
-    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const requestOptions = {
+        idempotencyKey: `contact/${payload.id}`,
+        // Resend forwards unknown request options to fetch; the cast keeps the
+        // SDK's narrow option type while allowing a bounded Worker request.
+        signal: controller.signal,
+      } as Parameters<typeof resend.emails.send>[1];
+      const { data, error } = await resend.emails.send(
+        {
+          from,
+          to: [to],
+          subject,
+          text: buildEmailText(payload),
+          html: buildEmailHtml(payload),
+          ...(payload.email ? { replyTo: payload.email } : {}),
+        },
+        requestOptions,
+      );
 
-    if (error) {
-      logger.error({
+      if (error) {
+        logger.error({
+          module: "mail",
+          action: "sendContactNotification",
+          message: "Resend rejected the email",
+          error,
+        });
+        return false;
+      }
+
+      logger.info({
         module: "mail",
         action: "sendContactNotification",
-        message: "Resend rejected the email",
-        error,
+        message: "Contact notification email sent successfully",
+        metadata: { id: data?.id },
       });
-      return false;
+      return true;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    logger.info({
-      module: "mail",
-      action: "sendContactNotification",
-      message: "Contact notification email sent successfully",
-      metadata: { id: data?.id },
-    });
-    return true;
   } catch (error) {
     logger.error({
       module: "mail",

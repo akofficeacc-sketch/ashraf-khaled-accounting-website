@@ -18,7 +18,7 @@ account-level setup step.
 
 - **Framework:** Next.js `16.3.3` (App Router), React 19, TypeScript, Tailwind v4, shadcn/ui.
 - **Source root:** `src/` (`src/app`, `src/components`, `src/lib`).
-- **Package manager:** Bun (`bun.lock` present). Use `bun install` / `bun run <script>`; `npm`/`npx` also fine for one-offs.
+- **Package manager:** npm (`package-lock.json` is present). Use `npm install` / `npm run <script>` so OpenNext invokes Wrangler with the same package manager in local and Cloudflare builds.
 - **Contact form UI:** `src/components/site/contact.tsx` → `ContactSection` (exported also as `Contact`, used in `src/app/page.tsx`).
   - Submit button label comes from `src/lib/site-content.ts`:
     - Arabic (line ~1031): `submit: "أرسل الطلب"`
@@ -51,9 +51,9 @@ Root causes (all must be fixed):
 ## 1. Install the Cloudflare adapter and Resend
 
 ```bash
-bun add @opennextjs/cloudflare@latest resend
-bun add -d wrangler@latest
-bun remove nodemailer @types/nodemailer
+npm install @opennextjs/cloudflare@latest resend
+npm install --save-dev wrangler@latest
+npm uninstall nodemailer @types/nodemailer
 ```
 
 Add to `.gitignore`:
@@ -65,7 +65,7 @@ Add to `.gitignore`:
 cloudflare-env.d.ts
 ```
 
-**Check:** `bun pm ls | grep -E "opennextjs|resend|wrangler"` shows all three; `nodemailer` is gone.
+**Check:** `npm ls @opennextjs/cloudflare resend wrangler` shows all three; `nodemailer` is gone.
 
 ---
 
@@ -198,7 +198,7 @@ Run `npx wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts` so `D
 ### 4d. Remove Prisma
 
 - Delete `prisma/`, `db/custom.db`.
-- `bun remove @prisma/client prisma`
+- `npm uninstall @prisma/client prisma`
 - Remove the `db:*` scripts from `package.json`.
 - In `src/app/api/contact/route.ts` replace:
 
@@ -374,7 +374,7 @@ initOpenNextCloudflareForDev();
 - Remove the `start` script (no Node server anymore).
 
 **In the Cloudflare dashboard** (Workers & Pages → project → Settings → Build):
-- **Build command:** `bun run build` (or `npm run build`) — this now creates the `.open-next` bundle.
+- **Build command:** `npm run build` — this now creates the `.open-next` bundle.
 - **Deploy command:** `npx wrangler deploy` or `npm run deploy` after the build completes.
 
 Add `public/_headers`:
@@ -421,10 +421,10 @@ Add `public/_headers`:
 
 ```bash
 # 1. Type-check + lint
-bun run lint && npx tsc --noEmit
+npm run lint && npx tsc --noEmit
 
 # 2. Build for Workers (this is what previously failed)
-bun run preview        # opens http://localhost:8787 in the workerd runtime
+npm run preview        # opens http://localhost:8787 in the workerd runtime
 ```
 
 Then in the browser (both languages — toggle AR/EN):
@@ -442,7 +442,7 @@ Then in the browser (both languages — toggle AR/EN):
 Finally:
 
 ```bash
-bun run deploy
+npm run deploy
 ```
 
 Expected tail of output: `Deployed ashraf-khaled-accounting triggers … https://ashraf-khaled-accounting.<subdomain>.workers.dev` — **no** "Could not detect a directory containing static files" error.

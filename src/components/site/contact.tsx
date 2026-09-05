@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   AlertCircle,
+  ArrowUp,
   Clock3,
   Loader2,
   Mail,
@@ -31,6 +32,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { rememberContactSubmission } from "@/lib/contact-cookie";
+
+type ContactField = "name" | "phone" | "email" | "service" | "message";
+
+function FieldCue({ show, id, children }: { show: boolean; id: string; children: React.ReactNode }) {
+  if (!show) return null;
+  return (
+    <div id={id} className="flex items-center gap-2 text-xs font-bold text-gold-2" role="status">
+      <ArrowUp className="h-4 w-4 animate-bounce" aria-hidden="true" />
+      <span>{children}</span>
+    </div>
+  );
+}
 
 /* -------------------------------- CTA banner -------------------------------- */
 
@@ -122,11 +135,26 @@ export function ContactSection() {
   const [loading, setLoading] = React.useState(false);
   const [done, setDone] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [attentionField, setAttentionField] = React.useState<ContactField | null>(null);
+
+  function reportFieldError(field: ContactField, message: string) {
+    setSubmitError(message);
+    setAttentionField(field);
+    const element = document.getElementById(`cf-${field}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => element.focus({ preventScroll: true }), 250);
+  }
 
   const set =
     (key: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setForm((f) => ({ ...f, [key]: e.target.value }));
+      if (attentionField === key) {
+        setAttentionField(null);
+        setSubmitError(null);
+      }
+    };
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -135,33 +163,60 @@ export function ContactSection() {
     const name = form.name.trim();
     const phone = form.phone.trim();
     const message = form.message.trim();
+    const email = form.email.trim();
+    const service = form.service.trim();
+
+    setSubmitError(null);
+    setAttentionField(null);
+
+    if (!name) {
+      reportFieldError("name", lang === "ar" ? "يرجى كتابة الاسم بالكامل." : "Please enter your full name.");
+      return;
+    }
     if (name.length < 2) {
-      setSubmitError(
+      reportFieldError(
+        "name",
         lang === "ar"
-          ? "حقل الاسم غير مكتمل — اكتب اسمك الكامل (حرفان على الأقل)."
-          : "The name field is incomplete — please enter your full name (at least 2 characters)."
+          ? "يرجى كتابة الاسم بالكامل (حرفان على الأقل)."
+          : "The name field is incomplete — please enter your full name (at least 2 characters).",
       );
-      document.getElementById("cf-name")?.focus();
+      return;
+    }
+    if (!phone) {
+      reportFieldError("phone", lang === "ar" ? "يرجى إدخال رقم الهاتف." : "Please enter your phone number.");
       return;
     }
     if (phone.length < 7) {
-      setSubmitError(
+      reportFieldError(
+        "phone",
         lang === "ar"
-          ? "حقل رقم الهاتف غير مكتمل — مثال: 0100 123 4567 أو +20 100 123 4567."
-          : "The phone field is incomplete — e.g. 0100 123 4567 or +20 100 123 4567."
+          ? "رقم الهاتف غير مكتمل — مثال: 0100 123 4567 أو +20 100 123 4567."
+          : "The phone field is incomplete — e.g. 0100 123 4567 or +20 100 123 4567.",
       );
-      document.getElementById("cf-phone")?.focus();
+      return;
+    }
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+      reportFieldError("email", lang === "ar" ? "يرجى إدخال بريد إلكتروني صحيح." : "Please enter a valid email address.");
+      return;
+    }
+    if (!service) {
+      reportFieldError("service", lang === "ar" ? "يرجى اختيار الخدمة المطلوبة." : "Please choose a requested service.");
+      return;
+    }
+    if (!message) {
+      reportFieldError("message", lang === "ar" ? "يرجى كتابة رسالتك." : "Please tell us how we can help.");
       return;
     }
     if (message.length < 5) {
-      setSubmitError(
+      reportFieldError(
+        "message",
         lang === "ar"
           ? `رسالتك قصيرة جدًا (${message.length} من 5 أحرف) — اكتب نبذة أوضح حتى نتمكن من مساعدتك.`
-          : `Your message is too short (${message.length} of 5 characters) — please tell us a bit more so we can help.`
+          : `Your message is too short (${message.length} of 5 characters) — please tell us a bit more so we can help.`,
       );
-      document.getElementById("cf-message")?.focus();
       return;
     }
+
     setSubmitError(null);
     setLoading(true);
     try {
@@ -172,7 +227,7 @@ export function ContactSection() {
           name: form.name.trim(),
           phone: form.phone.trim(),
           email: form.email.trim() || undefined,
-          service: form.service || undefined,
+          service: service || undefined,
           message: form.message.trim(),
           website: form.website,
           lang,
@@ -190,11 +245,17 @@ export function ContactSection() {
           );
         }
         if (data?.error?.code === "INVALID_PHONE" || data?.error?.message?.startsWith("phone:")) {
-          throw new Error(
+          reportFieldError(
+            "phone",
             lang === "ar"
               ? "أدخل رقم موبايل مصري صحيح، مثال: +20 100 123 4567."
-              : "Enter a valid Egyptian mobile number, e.g. +20 100 123 4567."
+              : "Enter a valid Egyptian mobile number, e.g. +20 100 123 4567.",
           );
+          return;
+        }
+        if (data?.error?.message?.startsWith("service:")) {
+          reportFieldError("service", lang === "ar" ? "يرجى اختيار الخدمة المطلوبة." : "Please choose a requested service.");
+          return;
         }
         if (data?.error?.code === "MESSAGE_LINK_NOT_ALLOWED" || data?.error?.code === "LINK_NOT_ALLOWED") {
           throw new Error(
@@ -401,8 +462,13 @@ export function ContactSection() {
                         minLength={2}
                         maxLength={120}
                         autoComplete="name"
-                        className={inputCls}
+                        aria-invalid={attentionField === "name"}
+                        aria-describedby={attentionField === "name" ? "cf-name-error" : undefined}
+                        className={cn(inputCls, attentionField === "name" && "border-gold bg-gold/5 ring-2 ring-gold/30")}
                       />
+                      <FieldCue show={attentionField === "name"} id="cf-name-error">
+                        {lang === "ar" ? "أكمل هذا الحقل" : "Complete this field"}
+                      </FieldCue>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="cf-phone" className="font-bold">
@@ -419,13 +485,17 @@ export function ContactSection() {
                         minLength={7}
                         maxLength={25}
                         autoComplete="tel"
-                        aria-invalid={submitError?.includes("موبايل") || submitError?.includes("mobile")}
-                        className={inputCls}
+                        aria-invalid={attentionField === "phone"}
+                        aria-describedby={attentionField === "phone" ? "cf-phone-error" : undefined}
+                        className={cn(inputCls, attentionField === "phone" && "border-gold bg-gold/5 ring-2 ring-gold/30")}
                       />
                       <p className="flex items-center gap-1.5 text-[11px] leading-5 text-muted-foreground">
                         <Phone className="h-3 w-3 shrink-0 text-gold-2" aria-hidden="true" />
                         {f.phoneHint}
                       </p>
+                      <FieldCue show={attentionField === "phone"} id="cf-phone-error">
+                        {lang === "ar" ? "أكمل رقم الهاتف هنا" : "Complete the phone number here"}
+                      </FieldCue>
                     </div>
                   </div>
 
@@ -441,16 +511,27 @@ export function ContactSection() {
                         placeholder={f.emailPlaceholder}
                         maxLength={160}
                         autoComplete="email"
-                        className={inputCls}
+                        aria-invalid={attentionField === "email"}
+                        aria-describedby={attentionField === "email" ? "cf-email-error" : undefined}
+                        className={cn(inputCls, attentionField === "email" && "border-gold bg-gold/5 ring-2 ring-gold/30")}
                       />
+                      <FieldCue show={attentionField === "email"} id="cf-email-error">
+                        {lang === "ar" ? "صحح البريد الإلكتروني هنا" : "Correct the email address here"}
+                      </FieldCue>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="cf-service">{f.service}</Label>
                       <Select
                         value={form.service}
-                        onValueChange={(v) => setForm((p) => ({ ...p, service: v }))}
+                        onValueChange={(v) => {
+                          setForm((p) => ({ ...p, service: v }));
+                          if (attentionField === "service") {
+                            setAttentionField(null);
+                            setSubmitError(null);
+                          }
+                        }}
                       >
-                      <SelectTrigger id="cf-service" className="h-14 w-full rounded-none border-0 border-b-2 border-border/50 bg-transparent px-0 font-bold shadow-none focus-visible:border-gold focus-visible:ring-0 data-[state=open]:border-gold">
+                      <SelectTrigger id="cf-service" aria-invalid={attentionField === "service"} aria-describedby={attentionField === "service" ? "cf-service-error" : undefined} className={cn("h-14 w-full rounded-none border-0 border-b-2 border-border/50 bg-transparent px-0 font-bold shadow-none focus-visible:border-gold focus-visible:ring-0 data-[state=open]:border-gold", attentionField === "service" && "border-gold bg-gold/5 ring-2 ring-gold/30")}>
                         <SelectValue placeholder={f.servicePlaceholder} />
                       </SelectTrigger>
                         <SelectContent>
@@ -461,6 +542,9 @@ export function ContactSection() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <FieldCue show={attentionField === "service"} id="cf-service-error">
+                        {lang === "ar" ? "اختر الخدمة من هنا" : "Choose a service here"}
+                      </FieldCue>
                     </div>
                   </div>
 
@@ -484,12 +568,16 @@ export function ContactSection() {
                       minLength={5}
                       maxLength={2000}
                       rows={5}
-                      aria-invalid={submitError?.includes("قصيرة جدًا") || submitError?.includes("too short")}
-                      className="min-h-32 resize-none border-b-2 border-t-0 border-x-0 border-border/50 bg-transparent px-0 py-3 text-sm text-foreground placeholder:font-medium placeholder:text-muted-foreground/60 shadow-none focus:border-b-2 focus:border-gold focus:ring-0 rounded-none"
+                      aria-invalid={attentionField === "message"}
+                      aria-describedby={attentionField === "message" ? "cf-message-error" : undefined}
+                      className={cn("min-h-32 resize-none border-b-2 border-t-0 border-x-0 border-border/50 bg-transparent px-0 py-3 text-sm text-foreground placeholder:font-medium placeholder:text-muted-foreground/60 shadow-none focus:border-b-2 focus:border-gold focus:ring-0 rounded-none", attentionField === "message" && "border-gold bg-gold/5 ring-2 ring-gold/30")}
                     />
                     <p className="text-[11px] leading-5 text-muted-foreground">
                       {lang === "ar" ? "5 أحرف على الأقل · حتى 2000 حرف" : "At least 5 characters · up to 2000"}
                     </p>
+                    <FieldCue show={attentionField === "message"} id="cf-message-error">
+                      {lang === "ar" ? "اكتب رسالتك هنا" : "Write your message here"}
+                    </FieldCue>
                   </div>
 
                   {submitError ? (

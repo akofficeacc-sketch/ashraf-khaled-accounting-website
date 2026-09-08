@@ -56,6 +56,9 @@ server.log
 preview.log
 preview.err.log
 
+# website manager tool history (stays on this computer only)
+website-tool-log.txt
+
 # local databases
 *.db
 

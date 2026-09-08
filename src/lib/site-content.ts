@@ -58,220 +58,10 @@ export const ETA = {
   einvoiceInquiryEn: "https://www.eta.gov.eg/en/einvoice-inquiry",
 } as const;
 
-/**
- * Egyptian payroll-tax (كسب العمل) data — brackets per year, personal exemption,
- * social-insurance limits & rates. Sources: Law 175/2023 (FY2023 brackets),
- * Finance Laws for 2024+ (brackets widened), Social Insurance Law 148/2019.
- * Bracket format: cumulative upper bound + marginal rate (consecutive
- * equal-rate bands merged — mathematically identical).
- */
-export const TAX_BRACKETS_BY_YEAR: Record<string, { upper: number; rate: number }[]> = {
-  "2026": [
-    { upper: 40_000, rate: 0 },
-    { upper: 55_000, rate: 0.1 },
-    { upper: 70_000, rate: 0.15 },
-    { upper: 200_000, rate: 0.2 },
-    { upper: 400_000, rate: 0.225 },
-    { upper: 700_000, rate: 0.25 },
-    { upper: Infinity, rate: 0.275 },
-  ],
-  "2025": [
-    { upper: 40_000, rate: 0 },
-    { upper: 55_000, rate: 0.1 },
-    { upper: 70_000, rate: 0.15 },
-    { upper: 200_000, rate: 0.2 },
-    { upper: 400_000, rate: 0.225 },
-    { upper: 700_000, rate: 0.25 },
-    { upper: Infinity, rate: 0.275 },
-  ],
-  "2024": [
-    { upper: 40_000, rate: 0 },
-    { upper: 55_000, rate: 0.1 },
-    { upper: 70_000, rate: 0.15 },
-    { upper: 200_000, rate: 0.2 },
-    { upper: 400_000, rate: 0.225 },
-    { upper: 700_000, rate: 0.25 },
-    { upper: Infinity, rate: 0.275 },
-  ],
-  "2023": [
-    { upper: 30_000, rate: 0 },
-    { upper: 45_000, rate: 0.1 },
-    { upper: 60_000, rate: 0.15 },
-    { upper: 200_000, rate: 0.2 },
-    { upper: 400_000, rate: 0.225 },
-    { upper: 600_000, rate: 0.25 },
-    { upper: Infinity, rate: 0.275 },
-  ],
-};
-
-export const TAX_YEARS = ["2026", "2025", "2024", "2023"] as const;
-
 /** Hard ceiling shared by every calculator input (keeps arithmetic bounded). */
 export const MAX_CALCULATION_AMOUNT = 1_000_000_000;
 
-export type IncomeTaxBracket = { upper: number; rate: number };
-
-export type IncomeTaxRuleSet = {
-  /** Human-readable version so a future legal update is a data-only change. */
-  version: string;
-  effectiveFrom: string;
-  sourceUrl: string;
-  brackets: readonly IncomeTaxBracket[];
-  /** For high earners, Egyptian rules remove the first bands from the calculation. */
-  highIncomeSteps: readonly { above: number; skipBands: number }[];
-};
-
-const ASMA_INCOME_SOURCE = "https://asma-systems.com/others/tax/income";
-
-/**
- * Versioned personal income-tax rules used by the income calculator.
- *
- * Keep this block intentionally data-only: when an official law changes, update
- * the bracket numbers/version/source here. Runtime code validates every value
- * before it can participate in a calculation; no remote code or untrusted JSON
- * is ever executed in the browser.
- */
-export const INCOME_TAX_RULESETS_BY_YEAR: Record<string, IncomeTaxRuleSet> = {
-  "2026": {
-    version: "2026-law-7-2024",
-    effectiveFrom: "2024-07-01",
-    sourceUrl: ASMA_INCOME_SOURCE,
-    brackets: [
-      { upper: 30_000, rate: 0 },
-      { upper: 45_000, rate: 0.1 },
-      { upper: 60_000, rate: 0.15 },
-      { upper: 200_000, rate: 0.2 },
-      { upper: 400_000, rate: 0.225 },
-      { upper: Infinity, rate: 0.25 },
-    ],
-    highIncomeSteps: [
-      { above: 600_000, skipBands: 1 },
-      { above: 700_000, skipBands: 2 },
-      { above: 800_000, skipBands: 3 },
-      { above: 900_000, skipBands: 4 },
-    ],
-  },
-  "2025": {
-    version: "2025-law-7-2024",
-    effectiveFrom: "2024-07-01",
-    sourceUrl: ASMA_INCOME_SOURCE,
-    brackets: [
-      { upper: 30_000, rate: 0 },
-      { upper: 45_000, rate: 0.1 },
-      { upper: 60_000, rate: 0.15 },
-      { upper: 200_000, rate: 0.2 },
-      { upper: 400_000, rate: 0.225 },
-      { upper: Infinity, rate: 0.25 },
-    ],
-    highIncomeSteps: [
-      { above: 600_000, skipBands: 1 },
-      { above: 700_000, skipBands: 2 },
-      { above: 800_000, skipBands: 3 },
-      { above: 900_000, skipBands: 4 },
-    ],
-  },
-  "2024": {
-    version: "2024-law-7-2024",
-    effectiveFrom: "2024-07-01",
-    sourceUrl: ASMA_INCOME_SOURCE,
-    brackets: [
-      { upper: 30_000, rate: 0 },
-      { upper: 45_000, rate: 0.1 },
-      { upper: 60_000, rate: 0.15 },
-      { upper: 200_000, rate: 0.2 },
-      { upper: 400_000, rate: 0.225 },
-      { upper: Infinity, rate: 0.25 },
-    ],
-    highIncomeSteps: [
-      { above: 600_000, skipBands: 1 },
-      { above: 700_000, skipBands: 2 },
-      { above: 800_000, skipBands: 3 },
-      { above: 900_000, skipBands: 4 },
-    ],
-  },
-  "2023": {
-    version: "2023-law-175-2023",
-    effectiveFrom: "2023-07-01",
-    sourceUrl: ASMA_INCOME_SOURCE,
-    brackets: [
-      { upper: 30_000, rate: 0 },
-      { upper: 45_000, rate: 0.1 },
-      { upper: 60_000, rate: 0.15 },
-      { upper: 200_000, rate: 0.2 },
-      { upper: 400_000, rate: 0.225 },
-      { upper: 600_000, rate: 0.25 },
-      { upper: Infinity, rate: 0.275 },
-    ],
-    highIncomeSteps: [],
-  },
-};
-
-function isValidIncomeTaxBrackets(value: unknown): value is readonly IncomeTaxBracket[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 20) return false;
-  let previous = 0;
-  return value.every((bracket, index) => {
-    if (!bracket || typeof bracket.upper !== "number" || typeof bracket.rate !== "number") return false;
-    const isFinalInfinity = index === value.length - 1 && bracket.upper === Infinity;
-    if ((!isFinalInfinity && !Number.isFinite(bracket.upper)) || bracket.upper <= previous) return false;
-    if (!Number.isFinite(bracket.rate) || bracket.rate < 0 || bracket.rate > 1) return false;
-    previous = bracket.upper;
-    return true;
-  });
-}
-
-function freezeIncomeTaxRuleSet(ruleSet: IncomeTaxRuleSet): IncomeTaxRuleSet {
-  const brackets = ruleSet.brackets.map((bracket) => Object.freeze({ ...bracket }));
-  const highIncomeSteps = ruleSet.highIncomeSteps
-    .filter((step) => Number.isFinite(step.above) && step.above >= 0 && Number.isInteger(step.skipBands) && step.skipBands >= 0)
-    .sort((a, b) => a.above - b.above)
-    .map((step) => Object.freeze({ ...step }));
-  if (!isValidIncomeTaxBrackets(brackets)) {
-    throw new Error(`Invalid income tax rules: ${ruleSet.version}`);
-  }
-  return Object.freeze({ ...ruleSet, brackets: Object.freeze(brackets), highIncomeSteps: Object.freeze(highIncomeSteps) });
-}
-
-const IMMUTABLE_INCOME_TAX_RULESETS = Object.freeze(
-  Object.fromEntries(Object.entries(INCOME_TAX_RULESETS_BY_YEAR).map(([year, ruleSet]) => [year, freezeIncomeTaxRuleSet(ruleSet)]))
-) as Record<string, IncomeTaxRuleSet>;
-
-export function getIncomeTaxRuleSet(year = "2026"): IncomeTaxRuleSet {
-  return IMMUTABLE_INCOME_TAX_RULESETS[year] ?? IMMUTABLE_INCOME_TAX_RULESETS["2026"];
-}
-
-/** Returns a defensive copy so callers cannot mutate the live rule table. */
-export function getIncomeTaxBrackets(year = "2026", annual = 0): IncomeTaxBracket[] {
-  const ruleSet = getIncomeTaxRuleSet(year);
-  const safeAnnual = Number.isFinite(annual) && annual > 0 ? Math.min(annual, MAX_CALCULATION_AMOUNT) : 0;
-  const skipBands = ruleSet.highIncomeSteps.reduce(
-    (skip, step) => (safeAnnual > step.above ? Math.max(skip, step.skipBands) : skip),
-    0
-  );
-  return ruleSet.brackets.slice(skipBands).map((bracket) => ({ ...bracket }));
-}
-
-/** Annual personal exemption (الإعفاء الشخصي) — Law 175/2023+. */
-export const PERSONAL_EXEMPTION = 20_000;
-
-/** Social-insurance subscription limits per year (monthly EGP). */
-export const INSURANCE_LIMITS: Record<string, { min: number; max: number }> = {
-  "2026": { min: 2_700, max: 16_700 },
-  "2025": { min: 2_300, max: 14_500 },
-  "2024": { min: 2_000, max: 12_600 },
-  "2023": { min: 1_700, max: 10_900 },
-};
-
-export const INSURANCE_EMPLOYEE_RATE = 0.11;
-export const INSURANCE_EMPLOYER_RATE = 0.1875;
-/** Exempt allowances are capped at 30% of the wage for insurance purposes. */
-export const ALLOWANCE_EXEMPT_CAP = 0.3;
-
 export const VAT_RATE = 0.14;
-
-/* ------------------------- income-tax (افراد / شركات) ------------------------ */
-
-/** Company (legal person) flat income-tax rate — Law 91/2005 art. 50. */
-export const CORPORATE_TAX_RATE = 0.225;
 
 /* --------------------- VAT additional fine (الضريبة الاضافية) --------------------- */
 
@@ -448,46 +238,6 @@ export function computeDelayFine(
   };
 }
 
-export function computeIncomeTax(annual: number, year = "2026"): number {
-  if (typeof annual !== "number" || !Number.isFinite(annual) || annual <= 0) {
-    return 0;
-  }
-  const safeAnnual = Math.min(annual, MAX_CALCULATION_AMOUNT);
-  const brackets = TAX_BRACKETS_BY_YEAR[year] ?? TAX_BRACKETS_BY_YEAR["2026"] ?? [];
-  let tax = 0;
-  let previous = 0;
-
-  for (const bracket of brackets) {
-    if (safeAnnual <= previous) break;
-    const upper = Number.isFinite(bracket.upper) ? bracket.upper : safeAnnual;
-    const taxable = Math.max(0, Math.min(safeAnnual, upper) - previous);
-    tax += taxable * bracket.rate;
-    previous = upper;
-  }
-  return Math.max(0, Math.round(tax * 100) / 100);
-}
-
-/**
- * Personal income-tax calculator backed by the versioned ASMA rule set.
- * The input is bounded and the result is rounded once at the money boundary.
- */
-export function computePersonalIncomeTax(annual: number, year = "2026"): number {
-  if (typeof annual !== "number" || !Number.isFinite(annual) || annual <= 0) return 0;
-  const safeAnnual = Math.min(annual, MAX_CALCULATION_AMOUNT);
-  const brackets = getIncomeTaxBrackets(year, safeAnnual);
-  let tax = 0;
-  let previous = 0;
-
-  for (const bracket of brackets) {
-    if (safeAnnual <= previous) break;
-    const upper = Number.isFinite(bracket.upper) ? bracket.upper : safeAnnual;
-    const taxable = Math.max(0, Math.min(safeAnnual, upper) - previous);
-    tax += taxable * bracket.rate;
-    previous = upper;
-  }
-
-  return Math.max(0, Math.round(tax * 100) / 100);
-}
 
 export type ServiceKey =
   | "bookkeeping"
@@ -553,7 +303,7 @@ export const content: Record<Lang, Content> = {
     trust: [
       { icon: "badge", text: "محاسبون متخصصون بخبرة موثقة" },
       { icon: "lock", text: "سرية وأمانة تامة في البيانات" },
-      { icon: "invoice", text: "فاتورة إلكترونية ومستمركة" },
+      { icon: "invoice", text: "الفاتورة الإلكترونية والإيصال الإلكتروني" },
       { icon: "clock", text: "متابعة مواعيد الضرائب بلا غرامات" },
       { icon: "chat", text: "دعم مباشر عبر واتساب" },
     ],
@@ -692,30 +442,54 @@ export const content: Record<Lang, Content> = {
       payroll: {
         modeMonthly: "إدخال شهري",
         modeAnnual: "إدخال سنوي",
-        yearLabel: "السنة الضريبية",
-        wageLabel: "الأجر",
-        wagePlaceholder: "مثال: 7,000",
-        deductionsLabel: "خصومات أخرى",
-        deductionsHint: "استقطاعات لا تدخل في التأمينات",
-        allowancesLabel: "بدلات معفاة من التأمينات",
-        allowancesHint: "بحد أقصى 30% من الأجر التأميني",
+        yearLabel: "السنة",
+        sectorLabel: "القطاع",
+        sectorPrivate: "خاص",
+        sectorPublic: "قطاع عام",
+        sectorGoverment: "حكومي",
+        primaryLabel: "الأجر",
+        primaryOldLabel: "الأساسي",
+        primaryPlaceholder: "مثال: 7,000",
+        secondaryLabel: "المتغير",
+        secondaryHint: "يُحتسب ضمن الأجر التأميني — لسنوات قبل 2020 فقط",
+        savedLabel: "بدلات معفاة",
+        savedHint: "بدلات معفاة من التأمينات — بحد أقصى 30% من الأجر — تُضاف قبل حساب الضريبة",
+        cutsLabel: "الخصومات",
+        cutsHint: "الاشتراكات والاستقطاعات والخصومات — تُخصم قبل حساب الضريبة",
         insuranceSwitch: "احتسب التأمينات الاجتماعية",
-        exemptionLabel: "الإعفاء الشخصي السنوي",
         limitsLabel: "حدود الاشتراك التأميني",
-        netMonthlyLabel: "صافي المرتب الشهري",
-        monthlyTaxLabel: "الضريبة شهريًا",
+        exemptionLabel: "الإعفاء الشخصي السنوي",
+        damghaLabel: "الدمغة النسبية",
+        damghaNote: "تُحتسب على القطاع العام والحكومي فقط — عن (الأجر − 50) وفق شرائح الدمغة، مقربة لأقرب 5 قروش لأعلى.",
+        netMonthlyLabel: "متوسط صافي الشهر",
+        monthlyTaxLabel: "متوسط الضريبة الشهرية",
         annualTaxLabel: "الضريبة سنويًا",
-        insuranceMonthlyLabel: "التأمينات شهريًا",
+        insuranceMonthlyLabel: "متوسط التأمينات الشهرية",
+        damghaMonthlyLabel: "متوسط الدمغة الشهرية",
         annualWageLabel: "الأجر السنوي",
-        taxBaseLabel: "وعاء الضريبة السنوي",
         empty: "أدخل الأجر لبدء الحساب",
+        monthsTitle: "تفاصيل الأشهر الاثني عشر",
+        monthCol: "الشهر",
+        salaryCol: "الأجر",
+        insuranceCol: "التأمينات",
+        damghaCol: "الدمغة",
+        beforeTaxCol: "قبل الضريبة",
+        personalCol: "الإعفاء الشهري",
+        taxableCol: "الخاضع شهريًا",
+        taxCol: "الضريبة",
+        netCol: "الصافي",
         insuranceTitle: "التأمينات الاجتماعية",
         insurableWage: "الأجر التأميني",
-        employeeShare: "حصة الموظف (11%)",
-        employerShare: "حصة الشركة (18.75%)",
+        employeeShare: "حصة الموظف",
+        employerShare: "حصة الشركة",
+        insInvalidPrimaryNew: "الأجر أقل من حد اشتراك التأمينات الشهرى",
+        insInvalidPrimaryOld: "الأجر الأساسي أقل من حد اشتراك التأمينات الشهرى",
+        insInvalidTotal: "الأجر أقل من الحد الأدنى لإجمالي أجر اشتراك التأمينات الشهرى",
         monthlyCol: "شهري",
         annualCol: "سنوي",
         bracketsTitle: "شرائح الضريبة",
+        lawLabel: "قانون",
+        discountRow: "خصم",
         colBand: "الشريحة",
         colRate: "النسبة",
         colTax: "الضريبة",
@@ -732,8 +506,10 @@ export const content: Record<Lang, Content> = {
         netAfterLabel: "صافي الدخل بعد الضريبة",
         effectiveRateLabel: "السعر الفعلي",
         empty: "أدخل صافي الدخل لبدء الحساب",
-        companyNote: "ضريبة الشركات 22.5% موحدة على صافي الربح",
+        companyNote: "الشركات: نسبة موحدة حسب القانون المختار — 22.5% من 2020 وما بعده",
         bracketsTitle: "شرائح الضريبة",
+        lawLabel: "قانون",
+        discountRow: "خصم",
         colBand: "الشريحة",
         colRate: "النسبة",
         colTax: "الضريبة",
@@ -1240,30 +1016,54 @@ export const content: Record<Lang, Content> = {
       payroll: {
         modeMonthly: "Monthly input",
         modeAnnual: "Annual input",
-        yearLabel: "Tax year",
-        wageLabel: "Wage",
-        wagePlaceholder: "e.g. 7,000",
-        deductionsLabel: "Other deductions",
-        deductionsHint: "Deductions excluded from insurance",
-        allowancesLabel: "Insurance-exempt allowances",
-        allowancesHint: "Capped at 30% of the insurable wage",
+        yearLabel: "Year",
+        sectorLabel: "Sector",
+        sectorPrivate: "Private",
+        sectorPublic: "Public sector",
+        sectorGoverment: "Government",
+        primaryLabel: "Wage",
+        primaryOldLabel: "Basic wage",
+        primaryPlaceholder: "e.g. 7,000",
+        secondaryLabel: "Variable wage",
+        secondaryHint: "Counted within the insurable wage — pre-2020 years only",
+        savedLabel: "Exempt allowances",
+        savedHint: "Exempt from insurance — capped at 30% of the wage; added back before tax",
+        cutsLabel: "Deductions",
+        cutsHint: "Deducted before tax; excluded from insurance",
         insuranceSwitch: "Include social insurance",
-        exemptionLabel: "Annual personal exemption",
         limitsLabel: "Insurance subscription limits",
-        netMonthlyLabel: "Net monthly salary",
-        monthlyTaxLabel: "Monthly tax",
+        exemptionLabel: "Annual personal exemption",
+        damghaLabel: "Stamp duty (Damgha)",
+        damghaNote: "Public sector & government only — applied on (wage − 50) per the stamp-duty tiers, rounded up to the nearest 5 piastres.",
+        netMonthlyLabel: "Average net month",
+        monthlyTaxLabel: "Average monthly tax",
         annualTaxLabel: "Annual tax",
-        insuranceMonthlyLabel: "Monthly insurance",
+        insuranceMonthlyLabel: "Average monthly insurance",
+        damghaMonthlyLabel: "Average monthly stamp duty",
         annualWageLabel: "Annual wage",
-        taxBaseLabel: "Annual taxable income",
         empty: "Enter a wage to start calculating",
+        monthsTitle: "Month-by-month breakdown",
+        monthCol: "Month",
+        salaryCol: "Wage",
+        insuranceCol: "Insurance",
+        damghaCol: "Stamp",
+        beforeTaxCol: "Before tax",
+        personalCol: "Monthly exemption",
+        taxableCol: "Monthly taxable",
+        taxCol: "Tax",
+        netCol: "Net",
         insuranceTitle: "Social Insurance",
         insurableWage: "Insurable wage",
-        employeeShare: "Employee share (11%)",
-        employerShare: "Employer share (18.75%)",
+        employeeShare: "Employee share",
+        employerShare: "Employer share",
+        insInvalidPrimaryNew: "Wage is below the monthly insurance subscription minimum",
+        insInvalidPrimaryOld: "Basic wage is below the monthly insurance subscription minimum",
+        insInvalidTotal: "Wage is below the minimum total insurable wage for the monthly subscription",
         monthlyCol: "Monthly",
         annualCol: "Annual",
         bracketsTitle: "Tax brackets",
+        lawLabel: "Law",
+        discountRow: "Discount",
         colBand: "Band",
         colRate: "Rate",
         colTax: "Tax",
@@ -1280,8 +1080,10 @@ export const content: Record<Lang, Content> = {
         netAfterLabel: "Net income after tax",
         effectiveRateLabel: "Effective rate",
         empty: "Enter net income to start calculating",
-        companyNote: "Corporate tax is a flat 22.5% on net profit",
+        companyNote: "Companies: a flat rate per the chosen law — 22.5% from 2020 onward",
         bracketsTitle: "Tax brackets",
+        lawLabel: "Law",
+        discountRow: "Discount",
         colBand: "Band",
         colRate: "Rate",
         colTax: "Tax",
@@ -1686,29 +1488,53 @@ export type Content = {
       modeMonthly: string;
       modeAnnual: string;
       yearLabel: string;
-      wageLabel: string;
-      wagePlaceholder: string;
-      deductionsLabel: string;
-      deductionsHint: string;
-      allowancesLabel: string;
-      allowancesHint: string;
+      sectorLabel: string;
+      sectorPrivate: string;
+      sectorPublic: string;
+      sectorGoverment: string;
+      primaryLabel: string;
+      primaryOldLabel: string;
+      primaryPlaceholder: string;
+      secondaryLabel: string;
+      secondaryHint: string;
+      savedLabel: string;
+      savedHint: string;
+      cutsLabel: string;
+      cutsHint: string;
       insuranceSwitch: string;
-      exemptionLabel: string;
       limitsLabel: string;
+      exemptionLabel: string;
+      damghaLabel: string;
+      damghaNote: string;
       netMonthlyLabel: string;
       monthlyTaxLabel: string;
       annualTaxLabel: string;
       insuranceMonthlyLabel: string;
+      damghaMonthlyLabel: string;
       annualWageLabel: string;
-      taxBaseLabel: string;
       empty: string;
+      monthsTitle: string;
+      monthCol: string;
+      salaryCol: string;
+      insuranceCol: string;
+      damghaCol: string;
+      beforeTaxCol: string;
+      personalCol: string;
+      taxableCol: string;
+      taxCol: string;
+      netCol: string;
       insuranceTitle: string;
       insurableWage: string;
       employeeShare: string;
       employerShare: string;
+      insInvalidPrimaryNew: string;
+      insInvalidPrimaryOld: string;
+      insInvalidTotal: string;
       monthlyCol: string;
       annualCol: string;
       bracketsTitle: string;
+      lawLabel: string;
+      discountRow: string;
       colBand: string;
       colRate: string;
       colTax: string;
@@ -1727,6 +1553,8 @@ export type Content = {
       empty: string;
       companyNote: string;
       bracketsTitle: string;
+      lawLabel: string;
+      discountRow: string;
       colBand: string;
       colRate: string;
       colTax: string;

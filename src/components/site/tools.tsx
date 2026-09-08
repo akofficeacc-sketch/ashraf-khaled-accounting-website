@@ -15,24 +15,18 @@ import {
   Wallet,
 } from "lucide-react";
 import {
-  ALLOWANCE_EXEMPT_CAP,
-  computeDelayFine,
-  computeIncomeTax,
-  computePersonalIncomeTax,
-  content,
-  CORPORATE_TAX_RATE,
-  getIncomeTaxBrackets,
-  INSURANCE_EMPLOYEE_RATE,
-  INSURANCE_EMPLOYER_RATE,
-  INSURANCE_LIMITS,
-  MAX_CALCULATION_AMOUNT,
-  PERSONAL_EXEMPTION,
-  TAX_BRACKETS_BY_YEAR,
-  TAX_YEARS,
-  VAT_FINE_CAP_MONTHS,
-  VAT_FINE_MONTHLY_RATE,
-  type DelayFineEntry,
-} from "@/lib/site-content";
+  computeDamgha,
+  computeIncomeTaxByYear,
+  computeSalaryYear,
+  getInsuranceInfo,
+  INCOME_YEAR_OPTIONS,
+  SALARY_MAX_YEAR,
+  SALARY_MIN_YEAR,
+  type Sector,
+  type TaxTable,
+} from "@/lib/asma-tax";
+import { computeDelayFine, MAX_CALCULATION_AMOUNT, VAT_FINE_CAP_MONTHS, VAT_FINE_MONTHLY_RATE, content } from "@/lib/site-content";
+import type { DelayFineEntry } from "@/lib/site-content";
 import { useLang } from "./lang-provider";
 import { ExtArrow, Reveal, SectionHead, btnPrimary } from "./primitives";
 import { Label } from "@/components/ui/label";
@@ -89,9 +83,14 @@ function formatMoney(n: number): string {
   }).format(rounded);
 }
 
+/** Formats a percent VALUE (22.5 → "22.5%"). */
+function formatPct(ratePercent: number): string {
+  return `${ratePercent % 1 === 0 ? ratePercent : ratePercent.toFixed(2)}%`;
+}
+
+/** Formats a fraction (0.225 → "22.5%"). */
 function formatRate(rate: number): string {
-  const pct = rate * 100;
-  return `${pct % 1 === 0 ? pct : pct.toFixed(2)}%`;
+  return formatPct(rate * 100);
 }
 
 /** Underline-style Select trigger — matches the de-boxed fields (no box, hairline bottom only). */
@@ -227,40 +226,18 @@ function Segmented<T extends string>({
   );
 }
 
-type BracketRow = { amount: number; rate: number; tax: number; net: number };
-
-function buildBracketRows(taxable: number, year: string, incomeRules = false): BracketRow[] {
-  const brackets = incomeRules
-    ? getIncomeTaxBrackets(year, taxable)
-    : TAX_BRACKETS_BY_YEAR[year] ?? TAX_BRACKETS_BY_YEAR["2026"];
-  const rows: BracketRow[] = [];
-  const safeTaxable = Number.isFinite(taxable) ? Math.max(0, Math.min(taxable, MAX_AMOUNT)) : 0;
-  let lower = 0;
-  for (const b of brackets) {
-    if (safeTaxable <= lower) break;
-    const upper = Number.isFinite(b.upper) ? b.upper : safeTaxable;
-    const amount = Math.max(0, Math.min(safeTaxable, upper) - lower);
-    if (amount > 0) {
-      const tax = Math.round(amount * b.rate * 100) / 100;
-      rows.push({ amount, rate: b.rate, tax, net: Math.max(0, Math.round((amount - tax) * 100) / 100) });
-    }
-    lower = upper;
-  }
-  return rows;
-}
+/* ------------------------------ bracket display ----------------------------- */
 
 function BracketTable({
-  rows,
-  totalTax,
+  table,
   taxable,
   labels,
-  year,
+  footer,
 }: {
-  rows: BracketRow[];
-  totalTax: number;
+  table: TaxTable;
   taxable: number;
-  labels: { colBand: string; colRate: string; colTax: string; colNet: string; totalRow: string };
-  year: string;
+  labels: { colBand: string; colRate: string; colTax: string; colNet: string; totalRow: string; discountRow: string };
+  footer: string;
 }) {
   return (
     <div className="overflow-x-auto border-t border-border">
@@ -282,14 +259,14 @@ function BracketTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
+          {table.rows.map((row, i) => (
             <tr key={i} className="border-b border-border/70 last:border-0">
               <td className="p-3 text-start font-bold text-foreground" dir="ltr">
                 {formatInt(row.amount)}
               </td>
               <td className="p-3 text-center">
                 <span className="text-xs font-black text-primary" dir="ltr">
-                  {formatRate(row.rate)}
+                  {row.rate === null ? "%" : formatPct(row.rate)}
                 </span>
               </td>
               <td className="p-3 text-center font-black text-foreground" dir="ltr">
@@ -300,20 +277,34 @@ function BracketTable({
               </td>
             </tr>
           ))}
+          {table.discountRate !== null ? (
+            <tr className="border-b border-border/70">
+              <td className="p-3 text-start font-bold text-primary" dir="ltr">{table.rows.length}</td>
+              <td className="p-3 text-center">
+                <span className="text-xs font-black text-primary" dir="ltr">
+                  −{formatPct(table.discountRate)}
+                </span>
+              </td>
+              <td className="p-3 text-center font-black text-primary" dir="ltr">
+                −{formatMoney(table.discount)}
+              </td>
+              <td className="p-3 text-center text-muted-foreground">—</td>
+            </tr>
+          ) : null}
           <tr className="border-t-2 border-gold/50 bg-gold/10">
             <td className="p-3 text-start font-black text-foreground">{labels.totalRow}</td>
             <td className="p-3 text-center text-xs font-bold text-muted-foreground">—</td>
             <td className="p-3 text-center text-base font-black text-gold-2" dir="ltr">
-              {formatMoney(totalTax)}
+              {formatMoney(table.netTax)}
             </td>
             <td className="p-3 text-center font-black text-foreground" dir="ltr">
-              {formatMoney(taxable - totalTax)}
+              {formatMoney(taxable - table.netTax)}
             </td>
           </tr>
         </tbody>
       </table>
       <p className="border-t border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-bold text-muted-foreground">
-        {year}
+        {footer}
       </p>
     </div>
   );
@@ -327,25 +318,31 @@ export function Calculators() {
   const { lang } = useLang();
   const t = content[lang].calc;
   const currency = content[lang].currency;
+  const monthFormatter = React.useMemo(
+    () => new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-US", { month: "short" }),
+    [lang]
+  );
 
   const [tool, setTool] = React.useState<ToolKey>("payroll");
-  /* ------------------------------- shared state ------------------------------ */
-  const [year, setYear] = React.useState("2026");
-  /* payroll */
+  /* ------------------------------- payroll state ------------------------------ */
   const [mode, setMode] = React.useState<"monthly" | "annual">("monthly");
-  const [wage, setWage] = React.useState("");
-  const [deductions, setDeductions] = React.useState("");
-  const [allowances, setAllowances] = React.useState("");
+  const [year, setYear] = React.useState(SALARY_MAX_YEAR);
+  const [sector, setSector] = React.useState<Sector>("private");
+  const [primary, setPrimary] = React.useState("");
+  const [secondary, setSecondary] = React.useState("");
+  const [saved, setSaved] = React.useState("");
+  const [cuts, setCuts] = React.useState("");
   const [includeInsurance, setIncludeInsurance] = React.useState(true);
-  /* income */
+  /* -------------------------------- income state ------------------------------- */
   const [incomeEntity, setIncomeEntity] = React.useState<"individual" | "company">("individual");
+  const [incomeYear, setIncomeYear] = React.useState(INCOME_YEAR_OPTIONS[0].value);
   const [netIncome, setNetIncome] = React.useState("");
-  /* vat fine */
+  /* -------------------------------- vat fine -------------------------------- */
   const [vfPeriod, setVfPeriod] = React.useState("2016-09-01");
   const [vfAmount, setVfAmount] = React.useState("5000");
   const [vfNotice, setVfNotice] = React.useState("2021-05-07");
   const [vfPayment, setVfPayment] = React.useState(todayISO());
-  /* delay fine */
+  /* ------------------------------- delay fine ------------------------------- */
   const [dfEntity, setDfEntity] = React.useState<"individual" | "company">("company");
   const [dfPayment, setDfPayment] = React.useState(todayISO());
   const [dfYear, setDfYear] = React.useState("2020");
@@ -355,39 +352,67 @@ export function Calculators() {
   const p = t.payroll;
 
   /* ------------------------------ payroll engine ----------------------------- */
-  const wageNum = parseAmount(wage);
-  const monthlyWage = mode === "monthly" ? wageNum : wageNum / 12;
-  const annualWage = monthlyWage * 12;
-  const monthlyDeductions = mode === "monthly" ? parseAmount(deductions) : parseAmount(deductions) / 12;
-  const monthlyAllowances = mode === "monthly" ? parseAmount(allowances) : parseAmount(allowances) / 12;
-  const limits = INSURANCE_LIMITS[year] ?? INSURANCE_LIMITS["2026"];
-  const insurableMonthly = includeInsurance
-    ? Math.min(
-        Math.max(monthlyWage - Math.min(monthlyAllowances, monthlyWage * ALLOWANCE_EXEMPT_CAP), limits.min),
-        limits.max
-      )
-    : 0;
-  const employeeInsMonthly = insurableMonthly * INSURANCE_EMPLOYEE_RATE;
-  const employerInsMonthly = insurableMonthly * INSURANCE_EMPLOYER_RATE;
-  const netAnnualBeforeTax = annualWage - employeeInsMonthly * 12 - monthlyDeductions * 12;
-  const taxBase = Math.max(0, netAnnualBeforeTax - PERSONAL_EXEMPTION);
-  const annualTax = computeIncomeTax(taxBase, year);
-  const netAnnualAfterTax = netAnnualBeforeTax - annualTax;
-  const monthlyNet = netAnnualAfterTax / 12;
-  const monthlyTax = annualTax / 12;
-  const bracketRows = buildBracketRows(taxBase, year);
-  const hasWage = wageNum > 0;
+  // Mirrors the source page: clamp savings to 30% of the wage first, then divide
+  // annual inputs by 12, then zero the component the chosen year doesn't use.
+  const primaryInput = parseAmount(primary);
+  const secondaryInput = parseAmount(secondary);
+  const savedInput = Math.min(parseAmount(saved), Math.floor(primaryInput * 0.3));
+  const cutsInput = parseAmount(cuts);
+  const isNewInsurance = year > 2019;
+  const toMonthly = (v: number) => (mode === "monthly" ? v : v / 12);
+  const salaryResult = React.useMemo(() => {
+    if (primaryInput <= 0) return null;
+    try {
+      return computeSalaryYear({
+        year,
+        sector,
+        monthly: {
+          primary: toMonthly(primaryInput),
+          secondary: isNewInsurance ? 0 : toMonthly(secondaryInput),
+          saved: isNewInsurance ? toMonthly(savedInput) : 0,
+          cuts: toMonthly(cutsInput),
+        },
+        calcInsurance: includeInsurance,
+      });
+    } catch {
+      return null;
+    }
+  }, [year, sector, primaryInput, secondaryInput, savedInput, cutsInput, includeInsurance, mode, isNewInsurance]);
+
+  const insuranceInfo = React.useMemo(() => {
+    try {
+      return getInsuranceInfo(year, sector);
+    } catch {
+      return null;
+    }
+  }, [year, sector]);
+  const insPctLabel = (share: { primary: number; secondary: number }) =>
+    share.secondary > 0 ? `${share.primary}% + ${share.secondary}%` : `${share.primary}%`;
+  const hasWage = primaryInput > 0 && salaryResult !== null;
+  const insError = salaryResult?.months[0].insuranceErrorKind ?? null;
+  const insErrorMessage =
+    salaryResult && insError === "primary"
+      ? `${isNewInsurance ? p.insInvalidPrimaryNew : p.insInvalidPrimaryOld} ${formatMoney(salaryResult.limits.primary.low)} ${currency}`
+      : salaryResult && insError === "total"
+        ? `${p.insInvalidTotal} ${formatMoney(salaryResult.limits.primary.low + salaryResult.limits.secondary.low)} ${currency}`
+        : null;
   const modeSuffix = `${currency} / ${mode === "monthly" ? p.monthlyCol : p.annualCol}`;
+  const salaryYears = React.useMemo(
+    () => Array.from({ length: SALARY_MAX_YEAR - SALARY_MIN_YEAR + 1 }, (_, i) => SALARY_MAX_YEAR - i),
+    []
+  );
 
   /* ------------------------------- income engine ------------------------------ */
   const incomeNum = parseAmount(netIncome);
   const isCompany = incomeEntity === "company";
-  const incomeTax = isCompany
-    ? Math.round(Math.min(incomeNum, MAX_AMOUNT) * CORPORATE_TAX_RATE * 100) / 100
-    : computePersonalIncomeTax(incomeNum, year);
-  const incomeNet = Math.max(0, incomeNum - incomeTax);
-  const effectiveRate = incomeNum > 0 ? Math.min(1, Math.max(0, incomeTax / incomeNum)) : 0;
-  const incomeBracketRows = isCompany ? [] : buildBracketRows(incomeNum, year, true);
+  const incomeResult = React.useMemo(() => {
+    if (incomeNum <= 0) return null;
+    try {
+      return computeIncomeTaxByYear(incomeNum, incomeYear, isCompany);
+    } catch {
+      return null;
+    }
+  }, [incomeNum, incomeYear, isCompany]);
 
   /* ------------------------------ vat fine engine ----------------------------- */
   const vfAmountNum = parseAmount(vfAmount);
@@ -405,7 +430,7 @@ export function Calculators() {
   const dfPaymentDate = dfPayment ? new Date(dfPayment + "T00:00:00") : null;
   const dfResult =
     dfPaymentDate && !Number.isNaN(dfPaymentDate.getTime())
-      ? computeDelayFine(dfEntries, dfPaymentDate, dfEntity)
+      ? computeDelayFineSafe(dfEntries, dfPaymentDate, dfEntity)
       : { rows: [], totalFine: 0, totalBalance: 0 };
 
   const tools: { key: ToolKey; label: string; icon: React.ReactNode }[] = [
@@ -464,16 +489,16 @@ export function Calculators() {
                           onChange={setMode}
                         />
                         <div className="flex items-center gap-2">
-                          <Label htmlFor="tax-year" className="text-xs font-bold text-muted-foreground">
+                          <Label htmlFor="pc-year" className="text-xs font-bold text-muted-foreground">
                             {p.yearLabel}
                           </Label>
-                          <Select value={year} onValueChange={setYear}>
-                            <SelectTrigger id="tax-year" className={cn("h-9 w-[110px] font-bold", selectTriggerCls)}>
+                          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                            <SelectTrigger id="pc-year" className={cn("h-9 w-[110px] font-bold", selectTriggerCls)}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {TAX_YEARS.map((y) => (
-                                <SelectItem key={y} value={y}>
+                              {salaryYears.map((y) => (
+                                <SelectItem key={y} value={String(y)}>
                                   {y}
                                 </SelectItem>
                               ))}
@@ -482,30 +507,57 @@ export function Calculators() {
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs font-bold text-muted-foreground">{p.sectorLabel}</Label>
+                        <Segmented
+                          ariaLabel={p.sectorLabel}
+                          options={[
+                            { key: "private", label: p.sectorPrivate },
+                            { key: "public", label: p.sectorPublic },
+                            { key: "goverment", label: p.sectorGoverment },
+                          ]}
+                          value={sector}
+                          onChange={setSector}
+                        />
+                      </div>
+
                       <NumberField
-                        id="pc-wage"
-                        label={`${p.wageLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
-                        placeholder={p.wagePlaceholder}
-                        value={wage}
-                        onChange={setWage}
+                        id="pc-primary"
+                        label={`${isNewInsurance ? p.primaryLabel : p.primaryOldLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
+                        placeholder={p.primaryPlaceholder}
+                        value={primary}
+                        onChange={setPrimary}
                         suffix={modeSuffix}
                       />
+                      {!isNewInsurance && (
+                        <NumberField
+                          id="pc-secondary"
+                          label={`${p.secondaryLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
+                          hint={p.secondaryHint}
+                          placeholder="0"
+                          value={secondary}
+                          onChange={setSecondary}
+                          suffix={modeSuffix}
+                        />
+                      )}
+                      {isNewInsurance && (
+                        <NumberField
+                          id="pc-saved"
+                          label={`${p.savedLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
+                          hint={p.savedHint}
+                          placeholder="0"
+                          value={saved}
+                          onChange={setSaved}
+                          suffix={modeSuffix}
+                        />
+                      )}
                       <NumberField
-                        id="pc-deductions"
-                        label={`${p.deductionsLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
-                        hint={p.deductionsHint}
+                        id="pc-cuts"
+                        label={`${p.cutsLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
+                        hint={p.cutsHint}
                         placeholder="0"
-                        value={deductions}
-                        onChange={setDeductions}
-                        suffix={modeSuffix}
-                      />
-                      <NumberField
-                        id="pc-allowances"
-                        label={`${p.allowancesLabel} (${mode === "monthly" ? p.monthlyCol : p.annualCol})`}
-                        hint={p.allowancesHint}
-                        placeholder="0"
-                        value={allowances}
-                        onChange={setAllowances}
+                        value={cuts}
+                        onChange={setCuts}
                         suffix={modeSuffix}
                       />
 
@@ -516,21 +568,36 @@ export function Calculators() {
                             <Label htmlFor="pc-insurance" className="text-sm font-bold text-foreground">
                               {p.insuranceSwitch}
                             </Label>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              {p.limitsLabel}: {formatInt(limits.min)} – {formatInt(limits.max)} {currency}
-                            </p>
+                            {insuranceInfo ? (
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {p.limitsLabel}: {formatMoney(insuranceInfo.primary.low)} – {formatMoney(insuranceInfo.primary.high)}{" "}
+                                {currency}
+                                {!isNewInsurance && insuranceInfo.secondary.high > 0
+                                  ? ` · ${formatMoney(insuranceInfo.secondary.low)} – ${formatMoney(insuranceInfo.secondary.high)} ${currency}`
+                                  : null}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                         <Switch id="pc-insurance" checked={includeInsurance} onCheckedChange={setIncludeInsurance} />
                       </div>
 
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Info className="h-3.5 w-3.5 shrink-0 text-gold-2" aria-hidden="true" />
-                        {p.exemptionLabel}:{" "}
-                        <strong className="font-black text-foreground">
-                          {formatInt(PERSONAL_EXEMPTION)} {currency}
-                        </strong>
-                      </p>
+                      {sector !== "private" ? (
+                        <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground">
+                          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-2" aria-hidden="true" />
+                          {p.damghaNote}
+                        </p>
+                      ) : null}
+
+                      {hasWage ? (
+                        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Info className="h-3.5 w-3.5 shrink-0 text-gold-2" aria-hidden="true" />
+                          {p.exemptionLabel}:{" "}
+                          <strong className="font-black text-foreground">
+                            {formatInt(salaryResult.personalExemption)} {currency}
+                          </strong>
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="flex flex-col justify-center gap-5 border-t border-border bg-deep-2 p-6 text-cream sm:p-8 lg:border-s lg:border-t-0">
@@ -541,7 +608,7 @@ export function Calculators() {
                               {p.netMonthlyLabel}
                             </span>
                             <strong className="mt-1 block text-4xl font-black tracking-tight text-gold-metallic sm:text-5xl" dir="ltr">
-                              {formatMoney(monthlyNet)}
+                              {formatMoney(salaryResult.totals.avgMonthlyNet)}
                               <span className="ms-2 text-lg font-bold text-cream/60">{currency}</span>
                             </strong>
                           </div>
@@ -549,29 +616,31 @@ export function Calculators() {
                             <div>
                               <span className="block text-[11px] font-bold text-cream/50">{p.monthlyTaxLabel}</span>
                               <strong className="mt-0.5 block text-lg font-black text-cream" dir="ltr">
-                                {formatMoney(monthlyTax)}
+                                {formatMoney(salaryResult.totals.avgMonthlyTax)}
                               </strong>
                             </div>
                             <div>
                               <span className="block text-[11px] font-bold text-cream/50">{p.annualTaxLabel}</span>
                               <strong className="mt-0.5 block text-lg font-black text-cream" dir="ltr">
-                                {formatMoney(annualTax)}
+                                {formatMoney(salaryResult.totals.tax)}
                               </strong>
                             </div>
                             <div>
                               <span className="block text-[11px] font-bold text-cream/50">{p.insuranceMonthlyLabel}</span>
                               <strong className="mt-0.5 block text-lg font-black text-cream" dir="ltr">
-                                {formatMoney(employeeInsMonthly)}
+                                {formatMoney(salaryResult.totals.insuranceEmployee / 12)}
                               </strong>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between gap-3 border-t border-cream/15 py-3 text-sm">
-                            <span className="text-cream/60">{p.taxBaseLabel}</span>
-                            <strong className="font-black text-gold-metallic" dir="ltr">
-                              {formatInt(taxBase)} {currency}
-                            </strong>
-                          </div>
-                          </>
+                          {sector !== "private" ? (
+                            <div className="flex items-center justify-between gap-3 border-t border-cream/15 py-3 text-sm">
+                              <span className="text-cream/60">{p.damghaMonthlyLabel}</span>
+                              <strong className="font-black text-gold-metallic" dir="ltr">
+                                {formatMoney(salaryResult.totals.damgha / 12)} {currency}
+                              </strong>
+                            </div>
+                          ) : null}
+                        </>
                       ) : (
                         <p className="py-6 text-center text-sm leading-7 text-cream/50">{p.empty}</p>
                       )}
@@ -579,63 +648,145 @@ export function Calculators() {
                   </div>
 
                   {hasWage ? (
-                    <div className="grid gap-0 border-t border-border lg:grid-cols-[1.4fr_1fr]">
-                      <div className="p-6 sm:p-8">
+                    <>
+                      {insErrorMessage ? (
+                        <p className="flex items-start gap-2 border-t border-destructive/30 bg-destructive/10 px-6 py-3 text-xs font-bold leading-5 text-destructive sm:px-8">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          {insErrorMessage}
+                        </p>
+                      ) : null}
+
+                      {/* month-by-month table */}
+                      <div className="border-t border-border p-6 sm:p-8">
                         <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-black text-foreground">
                           <Calculator className="h-4 w-4 text-gold-2" aria-hidden="true" />
-                          {p.bracketsTitle} — {year}
+                          {p.monthsTitle} — {year}
                         </h3>
-                        <BracketTable rows={bracketRows} totalTax={annualTax} taxable={taxBase} labels={p} year={year} />
-                      </div>
-                      <div className="border-t border-border bg-muted/40 p-6 sm:p-8 lg:border-s lg:border-t-0">
-                        <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-black text-foreground">
-                          <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-                          {p.insuranceTitle}
-                        </h3>
-                        {includeInsurance ? (
-                          <div className="overflow-x-auto border-t border-border">
-                            <table className="w-full border-collapse text-sm">
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[720px] border-collapse text-sm">
                             <thead>
                               <tr className="border-b bg-muted/60 text-xs">
-                                <th scope="col" className="p-3 text-start font-extrabold text-foreground/70">—</th>
-                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.monthlyCol}</th>
-                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.annualCol}</th>
+                                <th scope="col" className="p-3 text-start font-extrabold text-foreground/70">{p.monthCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.salaryCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.insuranceCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.damghaCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.beforeTaxCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.personalCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.taxableCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.taxCol}</th>
+                                <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.netCol}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {salaryResult.months.map((m) => (
+                                <tr key={m.month} className="border-b border-border/70 last:border-0">
+                                  <td className="p-3 text-start font-bold text-foreground">{monthFormatter.format(new Date(2024, m.month - 1, 1))}</td>
+                                  <td className="p-3 text-center font-bold text-foreground" dir="ltr">{formatMoney(m.salaryTotal)}</td>
+                                  <td className="p-3 text-center font-bold text-foreground" dir="ltr">{formatMoney(m.insuranceEmployee)}</td>
+                                  <td className="p-3 text-center font-bold text-foreground" dir="ltr">{formatMoney(m.damgha)}</td>
+                                  <td className="p-3 text-center font-bold text-foreground" dir="ltr">{formatMoney(m.beforeTax)}</td>
+                                  <td className="p-3 text-center font-bold text-muted-foreground" dir="ltr">{formatMoney(m.personalMonthly)}</td>
+                                  <td className="p-3 text-center font-bold text-muted-foreground" dir="ltr">{formatMoney(m.taxableMonthly)}</td>
+                                  <td className="p-3 text-center font-black text-foreground" dir="ltr">{formatMoney(m.tax)}</td>
+                                  <td className="p-3 text-center font-black text-gold-2" dir="ltr">{formatMoney(m.net)}</td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {[
-                                  { label: p.insurableWage, m: insurableMonthly },
-                                  { label: p.employeeShare, m: employeeInsMonthly },
-                                  { label: p.employerShare, m: employerInsMonthly },
-                                ].map((row) => (
-                                  <tr key={row.label} className="border-b border-border/70 last:border-0">
-                                    <th scope="row" className="p-3 text-start text-xs font-bold text-foreground/85">
-                                      {row.label}
-                                    </th>
-                                    <td className="p-3 text-center font-black text-foreground" dir="ltr">
-                                      {formatMoney(row.m)}
-                                    </td>
-                                    <td className="p-3 text-center font-bold text-muted-foreground" dir="ltr">
-                                      {formatMoney(row.m * 12)}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <p className="border-t border-dashed border-border pt-4 text-center text-xs leading-6 text-muted-foreground">
-                            {p.insuranceSwitch} — {p.monthlyCol}: 0
-                          </p>
-                        )}
-                        <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
-                          {p.limitsLabel}: {formatInt(limits.min)} – {formatInt(limits.max)} {currency} · {p.annualWageLabel}:{" "}
-                          <strong className="font-black text-foreground" dir="ltr">
-                            {formatInt(annualWage)} {currency}
-                          </strong>
-                        </p>
+                              ))}
+                              <tr className="border-t-2 border-gold/50 bg-gold/10">
+                                <td className="p-3 text-start font-black text-foreground">{p.totalRow}</td>
+                                <td className="p-3 text-center font-black text-foreground" dir="ltr">{formatMoney(salaryResult.totals.salary)}</td>
+                                <td className="p-3 text-center font-black text-foreground" dir="ltr">{formatMoney(salaryResult.totals.insuranceEmployee)}</td>
+                                <td className="p-3 text-center font-black text-foreground" dir="ltr">{formatMoney(salaryResult.totals.damgha)}</td>
+                                <td className="p-3 text-center font-black text-foreground" dir="ltr">{formatMoney(salaryResult.totals.beforeTax)}</td>
+                                <td className="p-3 text-center font-bold text-foreground" dir="ltr">{formatMoney(salaryResult.totals.personal)}</td>
+                                <td className="p-3 text-center font-bold text-muted-foreground">—</td>
+                                <td className="p-3 text-center text-base font-black text-gold-2" dir="ltr">{formatMoney(salaryResult.totals.tax)}</td>
+                                <td className="p-3 text-center font-black text-foreground" dir="ltr">{formatMoney(salaryResult.totals.net)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* bracket tables — one per law when the law changes mid-year */}
+                      <div className="grid min-w-0 gap-0 border-t border-border lg:grid-cols-[1.4fr_1fr]">
+                        <div className="min-w-0 p-6 sm:p-8">
+                          <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-black text-foreground">
+                            <Calculator className="h-4 w-4 text-gold-2" aria-hidden="true" />
+                            {p.bracketsTitle} — {year}
+                          </h3>
+                          <div className="space-y-6">
+                            {salaryResult.lawGroups.map((group) => (
+                              <BracketTable
+                                key={group.lawId}
+                                table={group.table}
+                                taxable={group.table.rows.reduce((acc, r) => acc + r.amount, 0)}
+                                labels={p}
+                                footer={`${p.lawLabel} ${group.lawNumber} ${lang === "ar" ? "لسنة" : "of"} ${group.lawYear} · ${group.months
+                                  .map((m) => monthFormatter.format(new Date(2024, m - 1, 1)))
+                                  .join(" · ")}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="min-w-0 border-t border-border bg-muted/40 p-6 sm:p-8 lg:border-s lg:border-t-0">
+                          <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-black text-foreground">
+                            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
+                            {p.insuranceTitle}
+                          </h3>
+                          {includeInsurance ? (
+                            <div className="overflow-x-auto border-t border-border">
+                              <table className="w-full border-collapse text-sm">
+                                <thead>
+                                  <tr className="border-b bg-muted/60 text-xs">
+                                    <th scope="col" className="p-3 text-start font-extrabold text-foreground/70">—</th>
+                                    <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.monthlyCol}</th>
+                                    <th scope="col" className="p-3 text-center font-extrabold text-foreground/70">{p.annualCol}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[
+                                    {
+                                      label: `${p.insurableWage}`,
+                                      m: salaryResult.months[0].insuranceBase,
+                                    },
+                                    {
+                                      label: `${p.employeeShare} (${insPctLabel(insuranceInfo?.employee ?? { primary: 0, secondary: 0 })})`,
+                                      m: salaryResult.months[0].insuranceEmployee,
+                                    },
+                                    {
+                                      label: `${p.employerShare} (${insPctLabel(insuranceInfo?.company ?? { primary: 0, secondary: 0 })})`,
+                                      m: salaryResult.months[0].insuranceEmployer,
+                                    },
+                                  ].map((row) => (
+                                    <tr key={row.label} className="border-b border-border/70 last:border-0">
+                                      <th scope="row" className="p-3 text-start text-xs font-bold text-foreground/85">
+                                        {row.label}
+                                      </th>
+                                      <td className="p-3 text-center font-black text-foreground" dir="ltr">
+                                        {formatMoney(row.m)}
+                                      </td>
+                                      <td className="p-3 text-center font-bold text-muted-foreground" dir="ltr">
+                                        {formatMoney(row.m * 12)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="border-t border-dashed border-border pt-4 text-center text-xs leading-6 text-muted-foreground">
+                              {p.insuranceSwitch} — {p.monthlyCol}: 0
+                            </p>
+                          )}
+                          <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
+                            {p.annualWageLabel}:{" "}
+                            <strong className="font-black text-foreground" dir="ltr">
+                              {formatMoney(salaryResult.totals.salary)} {currency}
+                            </strong>
+                          </p>
+                        </div>
+                      </div>
+                    </>
                   ) : null}
                 </div>
               </Reveal>
@@ -656,25 +807,23 @@ export function Calculators() {
                         value={incomeEntity}
                         onChange={setIncomeEntity}
                       />
-                      {!isCompany && (
-                        <div className="flex items-center gap-2">
-                          <Label htmlFor="inc-year" className="text-xs font-bold text-muted-foreground">
-                            {t.income.yearLabel}
-                          </Label>
-                          <Select value={year} onValueChange={setYear}>
-                            <SelectTrigger id="inc-year" className={cn("h-9 w-[110px] font-semibold", selectTriggerCls)}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TAX_YEARS.map((y) => (
-                                <SelectItem key={y} value={y}>
-                                  {y}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="inc-year" className="text-xs font-bold text-muted-foreground">
+                          {t.income.yearLabel}
+                        </Label>
+                        <Select value={String(incomeYear)} onValueChange={(v) => setIncomeYear(Number(v))}>
+                          <SelectTrigger id="inc-year" className={cn("h-9 w-[150px] font-semibold", selectTriggerCls)}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {INCOME_YEAR_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={String(o.value)}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <NumberField
                         id="inc-net"
                         label={`${t.income.netIncomeLabel} (${currency})`}
@@ -691,14 +840,14 @@ export function Calculators() {
                       )}
                     </div>
                     <div className="flex flex-col justify-center gap-5 border-t border-border bg-deep-2 p-6 text-cream sm:p-8 lg:border-s lg:border-t-0">
-                      {incomeNum > 0 ? (
+                      {incomeResult ? (
                         <>
                           <div>
                             <span className="text-xs font-bold ltr:uppercase ltr:tracking-wider rtl:tracking-normal text-cream/50">
                               {t.income.resultLabel}
                             </span>
                             <strong className="mt-1 block text-4xl font-black tracking-tight text-gold-metallic sm:text-5xl" dir="ltr">
-                              {formatMoney(incomeTax)}
+                              {formatMoney(incomeResult.tax)}
                               <span className="ms-2 text-lg font-bold text-cream/60">{currency}</span>
                             </strong>
                           </div>
@@ -706,13 +855,13 @@ export function Calculators() {
                             <div className="flex items-baseline justify-between gap-3">
                               <span className="text-xs font-bold text-cream/50">{t.income.netAfterLabel}</span>
                               <strong className="font-black" dir="ltr">
-                                {formatMoney(incomeNet)} {currency}
+                                {formatMoney(incomeResult.net)} {currency}
                               </strong>
                             </div>
                             <div className="flex items-baseline justify-between gap-3">
                               <span className="text-xs font-bold text-cream/50">{t.income.effectiveRateLabel}</span>
                               <strong className="font-black text-gold-metallic" dir="ltr">
-                                {formatRate(effectiveRate)}
+                                {formatRate(incomeResult.effectiveRate)}
                               </strong>
                             </div>
                           </div>
@@ -722,18 +871,17 @@ export function Calculators() {
                       )}
                     </div>
                   </div>
-                  {incomeNum > 0 && !isCompany ? (
+                  {incomeResult ? (
                     <div className="border-t border-border p-6 sm:p-8">
                       <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-black text-foreground">
                         <Calculator className="h-4 w-4 text-gold-2" aria-hidden="true" />
-                        {t.income.bracketsTitle} — {year}
+                        {t.income.bracketsTitle} — {INCOME_YEAR_OPTIONS.find((o) => o.value === incomeYear)?.label ?? incomeYear}
                       </h3>
                       <BracketTable
-                        rows={incomeBracketRows}
-                        totalTax={incomeTax}
+                        table={incomeResult.table}
                         taxable={incomeNum}
                         labels={t.income}
-                        year={year}
+                        footer={`${t.income.lawLabel} ${incomeResult.lawNumber} ${lang === "ar" ? "لسنة" : "of"} ${incomeResult.lawYear}`}
                       />
                     </div>
                   ) : null}
@@ -1001,3 +1149,26 @@ export function Calculators() {
     </section>
   );
 }
+
+/* ------------------------------- delay fine --------------------------------- */
+
+function computeDelayFineSafe(
+  entries: DelayFineEntry[],
+  paymentDate: Date,
+  entityType: "individual" | "company"
+): { rows: DelayFineRowView[]; totalFine: number; totalBalance: number } {
+  try {
+    return computeDelayFine(entries, paymentDate, entityType);
+  } catch {
+    return { rows: [], totalFine: 0, totalBalance: 0 };
+  }
+}
+
+type DelayFineRowView = {
+  periodStart: string;
+  months: number;
+  rate: number;
+  entryAmount: number;
+  balance: number;
+  fine: number;
+};

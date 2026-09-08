@@ -64,23 +64,27 @@ export function assertSameOrigin(request: Request): NextResponse | null {
 
   if (secFetchSite === "same-site") {
     // Same-site (e.g. sibling subdomain) — require exact host equality.
-    if (originHost && !hostsMatch(originHost, request)) {
+    if (!originHost || !hostsMatch(originHost, request)) {
       return crossOriginBlocked();
     }
     return null;
   }
 
   // Fallback path: same-origin / none / header absent.
-  if (originHost && !hostsMatch(originHost, request)) {
+  if (origin && origin !== "null" && (!originHost || !hostsMatch(originHost, request))) {
     return crossOriginBlocked();
   }
 
   const referer = request.headers.get("referer");
   if (referer) {
     const refererHost = urlHost(referer);
-    if (refererHost && !hostsMatch(refererHost, request)) {
+    if (!refererHost || !hostsMatch(refererHost, request)) {
       return crossOriginBlocked();
     }
+  }
+
+  if (!secFetchSite && !originHost && !referer) {
+    return crossOriginBlocked();
   }
 
   return null;

@@ -50,18 +50,25 @@ function truncateLogValue(value: string): string {
     : value;
 }
 
+/** Remove common personal-data formats from error details before logging. */
+function redactLogText(value: string): string {
+  return truncateLogValue(value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL]")
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, "[PHONE]"));
+}
+
 function serializeError(error: unknown): unknown {
   if (error instanceof Error) {
     return {
       name: error.name,
-      message: truncateLogValue(error.message),
-      ...(error.stack ? { stack: truncateLogValue(error.stack) } : {}),
+      message: redactLogText(error.message),
+      ...(error.stack ? { stack: redactLogText(error.stack) } : {}),
     };
   }
-  if (typeof error === "string") return truncateLogValue(error);
+  if (typeof error === "string") return redactLogText(error);
   if (error && typeof error === "object") {
     try {
-      const serialized = JSON.stringify(error);
+      const serialized = redactLogText(JSON.stringify(error));
       if (serialized.length <= MAX_ERROR_LOG_CHARS) return JSON.parse(serialized);
       return `${serialized.slice(0, MAX_ERROR_LOG_CHARS)}…`;
     } catch {

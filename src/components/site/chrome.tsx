@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion, useScroll, useSpring } from "framer-motion";
-import { ArrowUp, Calculator, Clock3, Mail, MapPin, Menu, MessageCircle, Moon, Phone, Sun, X } from "lucide-react";
+import { ArrowUp, Building2, Calculator, Clock3, Info, Mail, MapPin, Menu, MessageCircle, Moon, Phone, Sparkles, Sun, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { CONTACT } from "@/lib/site-content";
@@ -163,18 +163,41 @@ export function Header() {
   }, []);
 
   React.useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    // Lock scroll on <html>, never <body>: html has `overflow-x: clip`, so a
+    // body-level lock would turn <body> into its own scroll container, which
+    // breaks the header's position:sticky (the bar vanishes when opened mid-page).
+    const root = document.documentElement;
+    root.style.overflow = open ? "hidden" : "";
     return () => {
-      document.body.style.overflow = "";
+      root.style.overflow = "";
     };
   }, [open]);
 
   const links = [
-    { href: "#services", label: lang === "ar" ? "الخدمات" : "Services" },
-    { href: "#why", label: lang === "ar" ? "لماذا نحن" : "Why Us" },
-    { href: "#about", label: lang === "ar" ? "عن الشركة" : "About" },
-    { href: "#contact", label: lang === "ar" ? "تواصل معنا" : "Contact" },
+    { href: "#services", label: lang === "ar" ? "الخدمات" : "Services", icon: Sparkles },
+    { href: "#tools", label: lang === "ar" ? "أدوات مجانية" : "Tools", icon: Calculator },
+    { href: "#why", label: lang === "ar" ? "لماذا نحن" : "Why Us", icon: Building2 },
+    { href: "#about", label: lang === "ar" ? "عن الشركة" : "About", icon: Info },
+    { href: "#contact", label: lang === "ar" ? "تواصل معنا" : "Contact", icon: MessageCircle },
   ];
+
+  /**
+   * Closes the menu then scrolls to the section. The browser's native anchor
+   * jump is unreliable here: restoring the scroll lock (from "hidden") in the
+   * same tick as the unmount cancels it, leaving the user stuck at the top
+   * with a menu that "vanished without navigating".
+   */
+  const closeAndGo = (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setOpen(false);
+    // 340ms > the menu's 280ms exit animation: the menu lives inside the sticky
+    // header, so the page below shifts up while it collapses — scrolling any
+    // earlier lands past the section, hiding its heading under the bar.
+    window.setTimeout(() => {
+      document.querySelector(href)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.replaceState(null, "", href);
+    }, 340);
+  };
 
   return (
     <header
@@ -255,23 +278,32 @@ export function Header() {
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden border-t border-border bg-background lg:hidden"
           >
-            <nav aria-label={lang === "ar" ? "الشركة" : "Company"} className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6">
-              {links.map((l, i) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  className="group flex items-center gap-4 rounded-md px-4 py-3 text-base font-bold text-foreground transition-colors hover:bg-secondary"
-                >
-                  <span className="font-mono text-[11px] font-medium tabular-nums text-muted-foreground" aria-hidden="true">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {l.label}
-                </a>
-              ))}
+            <nav
+              aria-label={lang === "ar" ? "الشركة" : "Company"}
+              className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6 max-h-[calc(100dvh-88px)] overflow-y-auto overscroll-contain"
+            >
+              {links.map((l) => {
+                const Icon = l.icon;
+                return (
+                  <a
+                    key={l.href}
+                    href={l.href}
+                    onClick={closeAndGo(l.href)}
+                    className="group flex items-center gap-4 rounded-md px-4 py-3.5 text-base font-bold text-foreground transition-colors hover:bg-secondary"
+                  >
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-border bg-secondary/70 text-primary transition-colors group-hover:border-primary/30"
+                      aria-hidden="true"
+                    >
+                      <Icon className="h-[18px] w-[18px]" />
+                    </span>
+                    {l.label}
+                  </a>
+                );
+              })}
               <a
                 href="#contact"
-                onClick={() => setOpen(false)}
+                onClick={closeAndGo("#contact")}
                 className={cn(btnPrimary, "mt-2 w-full")}
               >
                 {lang === "ar" ? "تحدث مع مستشار" : "Talk to a Consultant"}

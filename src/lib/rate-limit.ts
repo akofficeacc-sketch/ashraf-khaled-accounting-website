@@ -142,8 +142,8 @@ export function rateLimit(options: RateLimitOptions): RateLimitResult {
 }
 
 /**
- * Prefer Cloudflare's origin IP header, then fall back to proxy headers for
- * local development and non-Cloudflare deployments.
+ * Use Cloudflare's trusted client IP in production. Proxy headers can be
+ * forged by a direct client, so they are only used for local development.
  */
 export function getClientKey(request: Request): string {
   try {
@@ -152,6 +152,10 @@ export function getClientKey(request: Request): string {
     if (cloudflareIp) {
       const trimmed = cloudflareIp.trim();
       if (trimmed) return sanitizeKey(trimmed);
+    }
+
+    if (process.env.NODE_ENV === "production") {
+      return "unknown";
     }
 
     const forwardedFor = request.headers.get("x-forwarded-for");

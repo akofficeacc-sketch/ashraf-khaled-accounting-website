@@ -49,8 +49,8 @@ export function Logo({
       }
       className="group flex shrink-0 items-center gap-2.5"
     >
-      <LogoMark className="h-14 w-14 transition-transform duration-300 group-hover:scale-105" />
-      <span className={`flex flex-col leading-[1.15] ${textClassName}`}>
+      <LogoMark className="h-11 w-11 shrink-0 transition-transform duration-300 group-hover:scale-105 sm:h-14 sm:w-14" />
+      <span className={`hidden flex-col leading-[1.15] min-[460px]:flex ${textClassName}`}>
         {lang === "ar" ? (
           <>
             <span className={`text-[10px] font-bold ${sub}`}>مكتب محاسبة</span>
